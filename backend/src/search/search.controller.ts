@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Req } from '@nestjs/common';
+import { Controller, Post, Body, Req, HttpCode } from '@nestjs/common';
 import { SearchService } from './search.service';
 import { SearchDto } from './dto/search.dto';
 
@@ -7,6 +7,7 @@ export class SearchController {
   constructor(private readonly searchService: SearchService) {}
 
   @Post()
+  @HttpCode(200)
   async search(@Body() dto: SearchDto, @Req() req: any) {
     return this.searchService.search(dto, req.user, req.ip, req.headers['user-agent']);
   }

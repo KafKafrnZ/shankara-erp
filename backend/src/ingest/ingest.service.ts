@@ -1,4 +1,4 @@
-import { Injectable, Inject, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, Inject, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, IsNull } from 'typeorm';
 import { SourceFile } from './entities/source-file.entity';
@@ -278,9 +278,12 @@ export class IngestService {
     };
   }
 
-  async getBatch(id: number) {
+  async getBatch(id: number, user?: any) {
     const batch = await this.ingestBatchRepo.findOne({ where: { id: String(id) } });
     if (!batch) throw new NotFoundException();
+    if (user && user.role === 'finance' && batch.status === 'held') {
+      throw new NotFoundException();
+    }
     return {
       id: Number(batch.id),
       status: batch.status,
@@ -319,9 +322,10 @@ export class IngestService {
 
   async publishBatch(batchId: number, userId: string, ip?: string, userAgent?: string) {
     const batch = await this.ingestBatchRepo.findOneBy({ id: String(batchId) });
-    if (!batch) throw new BadRequestException('Batch not found');
-    if (batch.status === 'published') return this.getBatch(batchId);
-    if (batch.status === 'rejected') throw new BadRequestException('Cannot publish rejected batch');
+    if (!batch) throw new NotFoundException('Batch not found');
+    if (batch.status === 'published' || batch.status === 'rejected') {
+      throw new ConflictException('NOT_HELD');
+    }
 
     batch.status = 'published';
     batch.publishedAt = new Date();
@@ -337,7 +341,7 @@ export class IngestService {
 
   async holdBatch(batchId: number, userId: string, ip?: string, userAgent?: string) {
     const batch = await this.ingestBatchRepo.findOneBy({ id: String(batchId) });
-    if (!batch) throw new BadRequestException('Batch not found');
+    if (!batch) throw new NotFoundException('Batch not found');
     if (batch.status === 'held') return this.getBatch(batchId);
 
     batch.status = 'held';
@@ -346,7 +350,7 @@ export class IngestService {
     await this.ingestBatchRepo.save(batch);
 
     await this.auditService.log({
-      userId, action: 'hold', ip, userAgent, meta: { batchId },
+      userId, action: 'unpublish', ip, userAgent, meta: { batchId },
     });
 
     return this.getBatch(batchId);

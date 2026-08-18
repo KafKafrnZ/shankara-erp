@@ -106,7 +106,7 @@ export class SearchService {
 
     // Determine asOf (MAX published_at)
     let asOfQuery = `SELECT MAX(published_at) as "asOf" FROM ingest_batch WHERE status = 'published'`;
-    let asOfParams = [];
+    let asOfParams: unknown[] = [];
     if (user.role === 'branch') {
       asOfQuery += ` AND company_id = $1`;
       asOfParams.push(user.companyId);

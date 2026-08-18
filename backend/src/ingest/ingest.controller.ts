@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Param, Query, UseInterceptors, UploadedFile, Body, Req, Res, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Param, Query, UseInterceptors, UploadedFile, Body, Req, Res, BadRequestException, HttpCode } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 import { Roles } from '../auth/roles.decorator';
@@ -40,10 +40,10 @@ export class IngestController {
 export class BatchesController {
   constructor(private readonly ingestService: IngestService) {}
 
-  @Roles('steward')
+  @Roles('steward', 'finance')
   @Get(':id')
-  async getBatch(@Param('id') id: string) {
-    return this.ingestService.getBatch(Number(id));
+  async getBatch(@Param('id') id: string, @Req() req: AuthedRequest) {
+    return this.ingestService.getBatch(Number(id), req.user);
   }
 
   @Roles('steward')
@@ -58,12 +58,14 @@ export class BatchesController {
 
   @Roles('steward')
   @Post(':id/publish')
+  @HttpCode(200)
   async publishBatch(@Param('id') id: string, @Req() req: AuthedRequest) {
     return this.ingestService.publishBatch(Number(id), req.user.id, req.ip, req.headers['user-agent'] as string);
   }
 
   @Roles('steward')
   @Post(':id/hold')
+  @HttpCode(200)
   async holdBatch(@Param('id') id: string, @Req() req: AuthedRequest) {
     return this.ingestService.holdBatch(Number(id), req.user.id, req.ip, req.headers['user-agent'] as string);
   }

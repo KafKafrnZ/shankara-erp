@@ -1,9 +1,10 @@
-import { IsOptional, IsString, IsInt, Min, Max, IsDateString } from 'class-validator';
+import { IsOptional, IsString, IsInt, Min, Max, IsDateString, Length } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class SearchDto {
   @IsOptional()
   @IsString()
+  @Length(1, 200)
   q?: string;
 
   @IsOptional()

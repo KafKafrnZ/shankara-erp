@@ -7,7 +7,7 @@ export class MetaService {
 
   async getAsOf(user: any) {
     let query = `SELECT MAX(published_at) as "asOf", MAX(id) as "batchId" FROM ingest_batch WHERE status = 'published'`;
-    const params = [];
+    const params: unknown[] = [];
     if (user.role === 'branch') {
       query += ` AND company_id = $1`;
       params.push(user.companyId);

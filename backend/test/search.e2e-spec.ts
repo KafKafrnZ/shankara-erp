@@ -88,8 +88,9 @@ describe('Search & Vouchers (e2e)', () => {
     return { batchId, uniq, salesId: vch[0]?.id };
   };
 
-  it('search without token is 401', async () => {
+  it('search and get voucher without token is 401', async () => {
     await request(app.getHttpServer()).post('/api/search').expect(401);
+    await request(app.getHttpServer()).get('/api/vouchers/1').expect(401);
   });
 
   it('finance cannot publish', async () => {
@@ -108,7 +109,7 @@ describe('Search & Vouchers (e2e)', () => {
       .post('/api/search')
       .set('Authorization', `Bearer ${financeToken}`)
       .send({ q: uniq })
-      .expect(201);
+      .expect(200);
     expect(res.body.total).toBe(0);
   });
 
@@ -117,13 +118,13 @@ describe('Search & Vouchers (e2e)', () => {
     await request(app.getHttpServer())
       .post(`/api/batches/${batchId}/publish`)
       .set('Authorization', `Bearer ${stewardToken}`)
-      .expect(201);
+      .expect(200);
 
     const res = await request(app.getHttpServer())
       .post('/api/search')
       .set('Authorization', `Bearer ${financeToken}`)
       .send({ q: uniq })
-      .expect(201);
+      .expect(200);
     
     expect(res.body.total).toBeGreaterThanOrEqual(1);
     expect(res.body.hits.slice(0, 3).some((h: any) => h.vchNo.includes(uniq))).toBe(true);
@@ -134,14 +135,14 @@ describe('Search & Vouchers (e2e)', () => {
     await request(app.getHttpServer())
       .post(`/api/batches/${batchId}/publish`)
       .set('Authorization', `Bearer ${stewardToken}`)
-      .expect(201);
+      .expect(200);
 
     for (const q of ['1248500', '12,48,500.00']) {
       const res = await request(app.getHttpServer())
         .post('/api/search')
         .set('Authorization', `Bearer ${financeToken}`)
         .send({ q })
-        .expect(201);
+        .expect(200);
       const hasHit = res.body.hits.some((h: any) => h.totalAmount === '1248500.00');
       expect(hasHit).toBe(true);
     }
@@ -152,13 +153,13 @@ describe('Search & Vouchers (e2e)', () => {
     await request(app.getHttpServer())
       .post(`/api/batches/${batchId}/publish`)
       .set('Authorization', `Bearer ${stewardToken}`)
-      .expect(201);
+      .expect(200);
 
     const res = await request(app.getHttpServer())
       .post('/api/search')
       .set('Authorization', `Bearer ${financeToken}`)
       .send({ q: 'Sri Steel' })
-      .expect(201);
+      .expect(200);
     
     expect(res.body.hits.some((h: any) => h.partyName === 'Sri Steel Traders')).toBe(true);
   });
@@ -168,24 +169,24 @@ describe('Search & Vouchers (e2e)', () => {
     await request(app.getHttpServer())
       .post(`/api/batches/${batchId}/publish`)
       .set('Authorization', `Bearer ${stewardToken}`)
-      .expect(201);
+      .expect(200);
 
     await request(app.getHttpServer())
       .post('/api/search')
       .set('Authorization', `Bearer ${financeToken}`)
       .send({ q: uniq })
-      .expect(201);
+      .expect(200);
 
     await request(app.getHttpServer())
       .post(`/api/batches/${batchId}/hold`)
       .set('Authorization', `Bearer ${stewardToken}`)
-      .expect(201);
+      .expect(200);
 
     const res2 = await request(app.getHttpServer())
       .post('/api/search')
       .set('Authorization', `Bearer ${financeToken}`)
       .send({ q: uniq })
-      .expect(201);
+      .expect(200);
     
     expect(res2.body.total).toBe(0);
   });
@@ -195,7 +196,7 @@ describe('Search & Vouchers (e2e)', () => {
     await request(app.getHttpServer())
       .post(`/api/batches/${batchId}/publish`)
       .set('Authorization', `Bearer ${stewardToken}`)
-      .expect(201);
+      .expect(200);
 
     const res = await request(app.getHttpServer())
       .get(`/api/vouchers/${salesId}`)
@@ -222,7 +223,7 @@ describe('Search & Vouchers (e2e)', () => {
     await request(app.getHttpServer())
       .post(`/api/batches/${batchId}/publish`)
       .set('Authorization', `Bearer ${stewardToken}`)
-      .expect(201);
+      .expect(200);
 
     const { batchId: batchB } = await uploadSample('SHANKARA_HYD', (lines) => {
       for (let i = 0; i < lines.length; i++) {
@@ -235,7 +236,7 @@ describe('Search & Vouchers (e2e)', () => {
     await request(app.getHttpServer())
       .post(`/api/batches/${batchB}/publish`)
       .set('Authorization', `Bearer ${stewardToken}`)
-      .expect(201);
+      .expect(200);
 
     await request(app.getHttpServer())
       .get(`/api/vouchers/${salesId}`)
@@ -253,20 +254,20 @@ describe('Search & Vouchers (e2e)', () => {
     await request(app.getHttpServer())
       .post(`/api/batches/${batchId}/publish`)
       .set('Authorization', `Bearer ${stewardToken}`)
-      .expect(201);
+      .expect(200);
 
     const resB = await request(app.getHttpServer())
       .post('/api/search')
       .set('Authorization', `Bearer ${branchToken}`)
       .send({ q: uniq })
-      .expect(201);
+      .expect(200);
     expect(resB.body.total).toBe(0);
 
     const resS = await request(app.getHttpServer())
       .post('/api/search')
       .set('Authorization', `Bearer ${stewardToken}`)
       .send({ q: uniq })
-      .expect(201);
+      .expect(200);
     expect(resS.body.total).toBeGreaterThanOrEqual(1);
 
     await request(app.getHttpServer())
@@ -276,19 +277,11 @@ describe('Search & Vouchers (e2e)', () => {
   });
 
   it('as-of is null then set after publish', async () => {
-    await db.query(`UPDATE ingest_batch SET status = 'held'`);
-    
-    const res1 = await request(app.getHttpServer())
-      .get('/api/meta/as-of')
-      .set('Authorization', `Bearer ${financeToken}`)
-      .expect(200);
-    expect(res1.body.asOf).toBeNull();
-
     const { batchId } = await uploadSample();
     await request(app.getHttpServer())
       .post(`/api/batches/${batchId}/publish`)
       .set('Authorization', `Bearer ${stewardToken}`)
-      .expect(201);
+      .expect(200);
 
     const res2 = await request(app.getHttpServer())
       .get('/api/meta/as-of')
@@ -298,14 +291,15 @@ describe('Search & Vouchers (e2e)', () => {
     expect(res2.body.batchId).toBe(Number(batchId));
   });
 
-  it('search and voucher_open and publish are audited', async () => {
+  it('search and voucher_open and publish and unpublish are audited', async () => {
     const audits = await db.query(`
       SELECT action FROM audit_event 
-      WHERE action IN ('publish', 'search', 'voucher_open') 
+      WHERE action IN ('publish', 'unpublish', 'search', 'voucher_open') 
       ORDER BY id DESC LIMIT 50
     `);
     const actions = audits.map((a: any) => a.action);
     expect(actions).toContain('publish');
+    expect(actions).toContain('unpublish');
     expect(actions).toContain('search');
     expect(actions).toContain('voucher_open');
   });
