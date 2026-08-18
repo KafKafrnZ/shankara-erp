@@ -6,14 +6,13 @@ import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { AuditModule } from './audit/audit.module';
 import { UsersModule } from './users/users.module';
-import { UsersModule } from './users/users.module';
-import { AuditModule } from './audit/audit.module';
-import { AuthModule } from './auth/auth.module';
 import * as Joi from 'joi';
 
 import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RolesGuard } from './auth/roles.guard';
+
+import { StorageModule } from './storage/storage.module';
 
 @Module({
   imports: [
@@ -30,6 +29,8 @@ import { RolesGuard } from './auth/roles.guard';
         DATABASE_NAME: Joi.string().required(),
         JWT_SECRET: Joi.string().min(32).required(),
         JWT_EXPIRES_IN: Joi.string().default('8h'),
+        STORAGE_DIR: Joi.string().default('./var/uploads'),
+        MAX_UPLOAD_BYTES: Joi.number().default(52428800),
       }),
     }),
     TypeOrmModule.forRootAsync({
@@ -52,6 +53,7 @@ import { RolesGuard } from './auth/roles.guard';
     AuthModule,
     UsersModule,
     AuditModule,
+    StorageModule,
   ],
   providers: [
     {

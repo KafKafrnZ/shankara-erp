@@ -17,7 +17,7 @@ export class AuditService {
     entityId?: string;
     ip?: string;
     userAgent?: string;
-    meta?: any;
+    meta?: Record<string, unknown>;
   }) {
     const event = this.auditRepository.create({
       userId: params.userId || null,

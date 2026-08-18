@@ -14,12 +14,16 @@ import { JwtStrategy } from './jwt.strategy';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: async (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET'),
-        signOptions: {
-          expiresIn: configService.get<string>('JWT_EXPIRES_IN') || '8h',
-        },
-      }),
+      useFactory: (configService: ConfigService) => {
+        const raw = configService.get<string>('JWT_EXPIRES_IN') ?? '8h';
+        const expiresIn = /^\d+$/.test(raw)
+          ? Number(raw)
+          : (raw as `${number}s` | `${number}m` | `${number}h` | `${number}d`);
+        return {
+          secret: configService.getOrThrow<string>('JWT_SECRET'),
+          signOptions: { expiresIn },
+        };
+      },
     }),
   ],
   controllers: [AuthController],

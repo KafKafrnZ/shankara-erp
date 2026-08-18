@@ -4,6 +4,7 @@ import { UsersService } from '../users/users.service';
 import { AuditService } from '../audit/audit.service';
 import * as bcrypt from 'bcrypt';
 import { LoginDto } from './dto/login.dto';
+import { JwtPayload } from './auth-user';
 
 @Injectable()
 export class AuthService {
@@ -45,7 +46,7 @@ export class AuthService {
       meta: { email: user.email },
     });
 
-    const payload = { sub: user.id, role: user.role };
+    const payload: JwtPayload = { sub: user.id, role: user.role };
     const accessToken = this.jwtService.sign(payload);
 
     return {

@@ -27,5 +27,5 @@ export class AuditEvent {
   userAgent: string | null;
 
   @Column({ type: 'jsonb', default: {} })
-  meta: any;
+  meta: Record<string, unknown>;
 }
