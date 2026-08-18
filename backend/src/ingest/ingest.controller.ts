@@ -1,4 +1,4 @@
-import { Controller, Post, UseInterceptors, UploadedFile, Body, Req, Res, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Param, Query, UseInterceptors, UploadedFile, Body, Req, Res, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 import { Roles } from '../auth/roles.decorator';
@@ -19,20 +19,40 @@ export class IngestController {
     @UploadedFile() file: Express.Multer.File,
     @Body() dto: UploadDto,
     @Req() req: AuthedRequest,
-    @Res() res: Response
+    @Res() res: Response,
   ) {
     if (!file) {
       throw new BadRequestException('No file provided');
     }
 
-    const ip = req.ip;
-    const userAgent = req.headers['user-agent'];
-    const result = await this.ingestService.processUpload(file, dto, req.user.id, ip, userAgent);
-
-    if (result.duplicate) {
-      return res.status(200).json(result);
-    } else {
-      return res.status(202).json(result);
+    try {
+      const result = await this.ingestService.processUpload(
+        file, dto, req.user.id, req.ip, req.headers['user-agent'] as string
+      );
+      if (result.status === 'duplicate') {
+        res.status(200).json(result);
+      } else {
+        res.status(202).json(result);
+      }
+    } catch (err) {
+      console.error('INGEST_ERROR_CRASH_DEBUG:', err);
+      throw new BadRequestException(err.message || 'Upload failed');
     }
+  }
+
+  @Roles('steward')
+  @Get('batches/:id')
+  async getBatch(@Param('id') id: string) {
+    return this.ingestService.getBatch(Number(id));
+  }
+
+  @Roles('steward')
+  @Get('batches/:id/rejects')
+  async getBatchRejects(
+    @Param('id') id: string,
+    @Query('page') page: string = '1',
+    @Query('pageSize') pageSize: string = '50',
+  ) {
+    return this.ingestService.getBatchRejects(Number(id), Number(page), Number(pageSize));
   }
 }

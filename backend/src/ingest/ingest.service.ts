@@ -1,13 +1,22 @@
-import { Injectable, Inject, BadRequestException } from '@nestjs/common';
+import { Injectable, Inject, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, IsNull } from 'typeorm';
 import { SourceFile } from './entities/source-file.entity';
 import { IngestBatch } from './entities/ingest-batch.entity';
+import { Voucher } from './entities/voucher.entity';
+import { VoucherLine } from './entities/voucher-line.entity';
+import { IngestReject } from './entities/ingest-reject.entity';
+import { MasterLedger } from './entities/master-ledger.entity';
 import { OBJECT_STORE } from '../storage/object-store';
 import type { ObjectStore } from '../storage/object-store';
 import { AuditService } from '../audit/audit.service';
 import { UploadDto } from './dto/upload.dto';
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+import { parseDayBookFile } from './parse/daybook.parser';
+import { validateDayBook } from './validate/daybook.validator';
 
 @Injectable()
 export class IngestService {
@@ -16,6 +25,14 @@ export class IngestService {
     private sourceFileRepo: Repository<SourceFile>,
     @InjectRepository(IngestBatch)
     private ingestBatchRepo: Repository<IngestBatch>,
+    @InjectRepository(Voucher)
+    private voucherRepo: Repository<Voucher>,
+    @InjectRepository(VoucherLine)
+    private voucherLineRepo: Repository<VoucherLine>,
+    @InjectRepository(IngestReject)
+    private ingestRejectRepo: Repository<IngestReject>,
+    @InjectRepository(MasterLedger)
+    private masterLedgerRepo: Repository<MasterLedger>,
     @Inject(OBJECT_STORE)
     private objectStore: ObjectStore,
     private auditService: AuditService,
@@ -23,60 +40,64 @@ export class IngestService {
   ) {}
 
   async processUpload(
-    file: Express.Multer.File,
+    file: any,
     dto: UploadDto,
     userId: string,
     ip?: string,
     userAgent?: string,
   ) {
-    if (!file) {
-      throw new BadRequestException('No file provided');
-    }
+    console.log('--- START PROCESS UPLOAD ---');
+    if (!file) throw new BadRequestException('No file provided');
 
     const validExtensions = ['.xlsx', '.xls', '.csv', '.zip'];
     const ext = file.originalname.substring(file.originalname.lastIndexOf('.')).toLowerCase();
-    if (!validExtensions.includes(ext)) {
-      throw new BadRequestException('Invalid file extension');
-    }
+    if (!validExtensions.includes(ext)) throw new BadRequestException('Invalid file extension');
 
     const sha256 = crypto.createHash('sha256').update(file.buffer).digest('hex');
+    console.log('--- SHA256:', sha256);
 
-    // 1. Check if source file already exists
     let sourceFile = await this.sourceFileRepo.findOne({ where: { sha256 } });
-    let duplicate = false;
-    let batchId: string;
-    let status: string;
-
     if (sourceFile) {
-      // Duplicate upload
-      duplicate = true;
+      console.log('--- IS DUPLICATE ---');
       const existingBatch = await this.ingestBatchRepo.findOne({
         where: { fileSha256: sha256 },
         order: { uploadedAt: 'DESC' },
       });
-      batchId = existingBatch ? existingBatch.id : 'unknown';
-      status = 'duplicate';
-
+      const batchId = existingBatch ? existingBatch.id : 'unknown';
       await this.auditService.log({
-        userId,
-        action: 'upload',
-        ip,
-        userAgent,
-        meta: { sha256, batchId, duplicate },
+        userId, action: 'upload', ip, userAgent, meta: { sha256, batchId, duplicate: true },
       });
 
       return {
         batchId: Number(batchId),
-        status,
-        duplicate,
+        status: 'duplicate',
+        duplicate: true,
         sha256,
         originalName: sourceFile.originalName,
         bytes: Number(sourceFile.byteSize),
       };
     }
 
-    // 2. New upload
     const stored = await this.objectStore.put(sha256, file.buffer, file.mimetype);
+    console.log('--- STORED IN S3 ---');
+
+    const tmpFile = path.join(os.tmpdir(), `upload-${Date.now()}-${Math.random()}${ext}`);
+    fs.writeFileSync(tmpFile, file.buffer);
+    
+    let parsedResult;
+    try {
+      console.log('--- PARSING FILE ---');
+      parsedResult = await parseDayBookFile(tmpFile);
+      console.log('--- PARSE DONE ---');
+    } finally {
+      if (fs.existsSync(tmpFile)) {
+        try {
+          fs.unlinkSync(tmpFile);
+        } catch (e) {
+          console.error('Failed to unlink tmp file:', e.message);
+        }
+      }
+    }
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -84,60 +105,217 @@ export class IngestService {
 
     try {
       sourceFile = this.sourceFileRepo.create({
-        sha256,
-        storageKey: stored.key,
-        originalName: file.originalname,
-        byteSize: stored.bytes.toString(),
-        contentType: file.mimetype,
-        uploadedBy: userId,
+        sha256, storageKey: stored.key, originalName: file.originalname,
+        byteSize: stored.bytes.toString(), contentType: file.mimetype, uploadedBy: userId,
       });
       await queryRunner.manager.save(sourceFile);
 
       const batch = this.ingestBatchRepo.create({
-        sourceFileId: sourceFile.id,
-        fileSha256: sha256,
-        tallyCompany: dto.companyId,
-        companyId: dto.companyId,
-        branchId: dto.branchId,
+        sourceFileId: sourceFile.id, fileSha256: sha256,
+        tallyCompany: parsedResult.detect.titleCompany || 'unknown',
+        companyId: dto.companyId, branchId: dto.branchId,
         reportType: 'DAY_BOOK',
-        status: 'uploaded',
-        uploadedBy: userId,
+        periodFrom: parsedResult.detect.periodFrom ? new Date(parsedResult.detect.periodFrom) : null,
+        periodTo: parsedResult.detect.periodTo ? new Date(parsedResult.detect.periodTo) : null,
+        status: 'held', uploadedBy: userId,
       });
       await queryRunner.manager.save(batch);
 
+      if (!parsedResult.detect.ok) {
+        batch.status = 'rejected';
+        batch.errorSummary = 'UNRECOGNIZED_LAYOUT';
+        await queryRunner.manager.save(batch);
+        await queryRunner.commitTransaction();
+        return this.finishUpload(batch, sourceFile, userId, ip, userAgent);
+      }
+
+      const expectedCompany = (process.env.EXPECTED_TALLY_COMPANY_SUBSTR || 'shankara').toLowerCase();
+      if (!batch.tallyCompany.toLowerCase().includes(expectedCompany)) {
+        batch.status = 'rejected';
+        batch.errorSummary = 'COMPANY_MISMATCH';
+        await queryRunner.manager.save(batch);
+        await queryRunner.commitTransaction();
+        return this.finishUpload(batch, sourceFile, userId, ip, userAgent);
+      }
+
+      const validated = validateDayBook(parsedResult);
+      if (validated.vouchers.length === 0) {
+        batch.status = 'rejected';
+        batch.errorSummary = 'ZERO_VOUCHERS';
+      }
+
+      let totalLines = 0;
+      let dSum = 0;
+      let cSum = 0;
+
+      for (const rej of validated.rejects) {
+        await queryRunner.manager.save(this.ingestRejectRepo.create({
+          batchId: batch.id,
+          sourceRowNo: rej.sourceRowNo,
+          code: rej.code,
+          message: rej.message,
+          raw: rej.raw || {},
+        }));
+      }
+
+      if (batch.status !== 'rejected') {
+        const uniqueLedgers = new Set<string>();
+        for (const v of validated.vouchers) {
+          totalLines += v.lines.length;
+          
+          for (const line of v.lines) {
+            dSum += parseFloat(line.debit);
+            cSum += parseFloat(line.credit);
+            uniqueLedgers.add(line.ledgerName);
+          }
+
+          const fpObj = {
+            lines: v.lines.map(l => ({ credit: l.credit, debit: l.debit, ledgerName: l.ledgerName })),
+            narration: v.narration,
+            partyName: v.partyName,
+            totalAmount: v.totalAmount,
+            vchDate: v.vchDate,
+            vchNo: v.vchNo,
+            vchType: v.vchType,
+          };
+          const fpString = JSON.stringify(fpObj);
+          const fingerprint = crypto.createHash('sha256').update(fpString).digest('hex');
+
+          let tallyGuid = crypto.createHash('sha256').update(`${dto.companyId}:${v.vchType}:${v.vchNo}:${v.vchDate}`).digest('hex');
+
+          const currentVoucher = await queryRunner.manager.findOne(Voucher, {
+            where: {
+              companyId: dto.companyId,
+              vchType: v.vchType,
+              vchNo: v.vchNo,
+              vchDate: v.vchDate,
+              validTo: IsNull(),
+              isDeleted: false,
+            }
+          });
+
+          if (currentVoucher) {
+            tallyGuid = currentVoucher.tallyGuid || tallyGuid;
+            if (currentVoucher.extra.fingerprint === fingerprint) {
+              continue;
+            } else {
+              currentVoucher.validTo = new Date();
+              await queryRunner.manager.save(currentVoucher);
+            }
+          }
+
+          const newVoucher = this.voucherRepo.create({
+            batchId: batch.id,
+            companyId: dto.companyId,
+            branchId: dto.branchId,
+            tallyGuid,
+            vchNo: v.vchNo,
+            vchNoNorm: v.vchNoNorm,
+            vchType: v.vchType,
+            vchDate: v.vchDate,
+            partyName: v.partyName,
+            totalAmount: v.totalAmount,
+            narration: v.narration,
+            sourceRowNo: v.sourceRowNo,
+            extra: { ...v.extra, fingerprint },
+            lines: v.lines.map(l => this.voucherLineRepo.create({
+              lineNo: l.lineNo,
+              ledgerName: l.ledgerName,
+              debit: l.debit,
+              credit: l.credit,
+              extra: l.extra,
+            })),
+          });
+          await queryRunner.manager.save(newVoucher);
+        }
+
+        for (const ledgerName of uniqueLedgers) {
+          await queryRunner.manager.query(
+            `INSERT INTO master_ledger (company_id, ledger_name, is_party, extra)
+             VALUES ($1, $2, false, '{}')
+             ON CONFLICT (company_id, ledger_name) DO UPDATE SET extra = master_ledger.extra`,
+            [dto.companyId, ledgerName]
+          );
+        }
+      }
+
+      batch.totalRows = totalLines;
+      batch.acceptedRows = validated.vouchers.length;
+      batch.rejectedRows = validated.rejects.length;
+      batch.debitSum = dSum > 0 ? dSum.toFixed(2) : '0.00';
+      batch.creditSum = cSum > 0 ? cSum.toFixed(2) : '0.00';
+      
+      const tol = parseFloat(process.env.DEBIT_CREDIT_TOLERANCE || '0.05');
+      if (Math.abs(dSum - cSum) > tol && batch.status !== 'rejected') {
+        batch.errorSummary = `OUT_OF_BALANCE: debit=${batch.debitSum} credit=${batch.creditSum}`;
+      }
+
+      await queryRunner.manager.save(batch);
+
       await queryRunner.commitTransaction();
-
-      batchId = batch.id;
-      status = batch.status;
-
-      await this.auditService.log({
-        userId,
-        action: 'upload',
-        ip,
-        userAgent,
-        meta: { sha256, batchId, duplicate: false },
-      });
-
-      return {
-        batchId: Number(batchId),
-        status,
-        duplicate: false,
-        sha256,
-        originalName: sourceFile.originalName,
-        bytes: stored.bytes,
-      };
+      return this.finishUpload(batch, sourceFile, userId, ip, userAgent);
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      const code =
-        typeof error === 'object' && error !== null && 'code' in error
-          ? String((error as { code: unknown }).code)
-          : '';
+      const code = typeof error === 'object' && error !== null && 'code' in error ? String((error as any).code) : '';
       if (code === '23505') {
-        return this.processUpload(file, dto, userId, ip, userAgent);
+        throw new BadRequestException('Concurrent upload or duplicate constraint violation.');
       }
       throw error;
     } finally {
       await queryRunner.release();
     }
+  }
+
+  private async finishUpload(batch: any, file: any, userId: string, ip: any, agent: any) {
+    await this.auditService.log({
+      userId, action: 'upload', ip, userAgent: agent, meta: { sha256: file.sha256, batchId: batch.id, duplicate: false },
+    });
+    return {
+      batchId: Number(batch.id),
+      status: batch.status,
+      duplicate: false,
+      sha256: file.sha256,
+      originalName: file.originalName,
+      bytes: Number(file.byteSize),
+    };
+  }
+
+  async getBatch(id: number) {
+    const batch = await this.ingestBatchRepo.findOne({ where: { id: String(id) } });
+    if (!batch) throw new NotFoundException();
+    return {
+      id: Number(batch.id),
+      status: batch.status,
+      companyId: batch.companyId,
+      tallyCompany: batch.tallyCompany,
+      periodFrom: batch.periodFrom ? batch.periodFrom.toISOString().split('T')[0] : null,
+      periodTo: batch.periodTo ? batch.periodTo.toISOString().split('T')[0] : null,
+      totalRows: batch.totalRows,
+      acceptedRows: batch.acceptedRows,
+      rejectedRows: batch.rejectedRows,
+      debitSum: batch.debitSum,
+      creditSum: batch.creditSum,
+      errorSummary: batch.errorSummary,
+      publishedAt: batch.publishedAt,
+      sha256: batch.fileSha256,
+    };
+  }
+
+  async getBatchRejects(id: number, page: number, pageSize: number) {
+    const [items, total] = await this.ingestRejectRepo.findAndCount({
+      where: { batchId: String(id) },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      order: { sourceRowNo: 'ASC' }
+    });
+    return {
+      items: items.map(i => ({
+        sourceRowNo: i.sourceRowNo,
+        code: i.code,
+        message: i.message,
+        raw: i.raw,
+      })),
+      total,
+    };
   }
 }

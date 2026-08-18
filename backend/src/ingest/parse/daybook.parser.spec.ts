@@ -76,7 +76,25 @@ describe('DayBook Parser', () => {
   it('parses indian comma amounts on sample', async () => {
     const res = await parseDayBookFile(sampleCsv);
     const sales = res.vouchers.find(v => v.vchType === 'Sales');
-    expect(sales?.totalAmount).toBe('2497000.00');
+    expect(sales?.totalAmount).toBe('1248500.00');
+  });
+
+  it('sample sales and receipt lines match EXPECTED debit credit sides', async () => {
+    const res = await parseDayBookFile(sampleCsv);
+    const sales = res.vouchers.find(v => v.vchType === 'Sales');
+    const receipt = res.vouchers.find(v => v.vchType === 'Receipt');
+    expect(sales?.lines).toEqual([
+      expect.objectContaining({ ledgerName: 'Sri Steel Traders', debit: '1248500.00', credit: '0.00' }),
+      expect.objectContaining({ ledgerName: 'CGST', debit: '0.00', credit: '112365.00' }),
+      expect.objectContaining({ ledgerName: 'SGST', debit: '0.00', credit: '112365.00' }),
+      expect.objectContaining({ ledgerName: 'Sales GST', debit: '0.00', credit: '1023770.00' }),
+    ]);
+    expect(receipt?.totalAmount).toBe('50000.00');
+    expect(receipt?.partyName).toBe('Cash');
+    expect(receipt?.lines).toEqual([
+      expect.objectContaining({ ledgerName: 'Cash', debit: '50000.00', credit: '0.00' }),
+      expect.objectContaining({ ledgerName: 'Sri Steel Traders', debit: '0.00', credit: '50000.00' }),
+    ]);
   });
 
   it('normalizes voucher number on sample', async () => {
@@ -129,5 +147,9 @@ Date,Particulars,Vch Type,Vch No.,Debit,Credit
     expect(res.vouchers.length).toBe(2);
     const sales = res.vouchers.find(v => v.vchType === 'Sales');
     expect(sales?.lines.length).toBe(4);
+    expect(sales?.totalAmount).toBe('1248500.00');
+    expect(sales?.lines[1]).toEqual(
+      expect.objectContaining({ ledgerName: 'CGST', debit: '0.00', credit: '112365.00' }),
+    );
   });
 });

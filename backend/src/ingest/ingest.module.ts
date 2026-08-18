@@ -7,11 +7,22 @@ import { IngestController } from './ingest.controller';
 import { IngestService } from './ingest.service';
 import { SourceFile } from './entities/source-file.entity';
 import { IngestBatch } from './entities/ingest-batch.entity';
+import { Voucher } from './entities/voucher.entity';
+import { VoucherLine } from './entities/voucher-line.entity';
+import { IngestReject } from './entities/ingest-reject.entity';
+import { MasterLedger } from './entities/master-ledger.entity';
 import { StorageModule } from '../storage/storage.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([SourceFile, IngestBatch]),
+    TypeOrmModule.forFeature([
+      SourceFile,
+      IngestBatch,
+      Voucher,
+      VoucherLine,
+      IngestReject,
+      MasterLedger,
+    ]),
     StorageModule,
     MulterModule.registerAsync({
       imports: [ConfigModule],

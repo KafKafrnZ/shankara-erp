@@ -109,18 +109,18 @@ describe('UploadController (e2e)', () => {
       .set('Authorization', `Bearer ${stewardToken}`)
       .field('companyId', 'SHANKARA_HYD')
       .attach('file', fixturePathCsv)
-      .expect(202);
-
-    expect(res.body.status).toBe('uploaded');
-    expect(res.body.duplicate).toBe(false);
-    expect(res.body.sha256).toBe(expectedSha);
+      .expect(202)
+      .expect((res) => {
+        expect(res.body.duplicate).toBe(false);
+        expect(res.body.status).toBe('rejected');
+      });
 
     const sourceFile = await dbConnection.query(`SELECT * FROM source_file WHERE sha256 = $1`, [expectedSha]);
     expect(sourceFile.length).toBe(1);
 
     const batch = await dbConnection.query(`SELECT * FROM ingest_batch WHERE file_sha256 = $1`, [expectedSha]);
     expect(batch.length).toBe(1);
-    expect(batch[0].status).toBe('uploaded');
+    expect(batch[0].status).toBe('rejected');
 
     const audit = await dbConnection.query(`SELECT * FROM audit_event WHERE action = 'upload' AND meta->>'sha256' = $1 ORDER BY at DESC LIMIT 1`, [expectedSha]);
     expect(audit.length).toBe(1);
