@@ -1,4 +1,12 @@
-import { Controller } from '@nestjs/common';
+import { Controller, Post } from '@nestjs/common';
+import { Roles } from '../auth/roles.decorator';
 
-@Controller('ingest')
-export class IngestController {}
+@Controller('uploads')
+export class IngestController {
+  
+  @Roles('steward')
+  @Post()
+  upload() {
+    return { ok: true };
+  }
+}
