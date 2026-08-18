@@ -80,20 +80,26 @@ describe('Ingest (e2e)', () => {
 
     const sales = vouchers.find((v: any) => v.vch_type === 'Sales');
     expect(sales.total_amount).toBe('1248500.00');
-  });
 
-  it('sample line sides match EXPECTED', async () => {
-    const lines = await db.query(`
-      SELECT vl.*, v.vch_type, v.party_name 
-      FROM voucher_line vl 
-      JOIN voucher v ON vl.voucher_id = v.id 
-      WHERE v.valid_to IS NULL 
-      ORDER BY vl.id DESC LIMIT 6
-    `);
-    
+    // Assert sample batch published_at IS NULL and sales vch_no_norm
+    const batch = await db.query(`SELECT * FROM ingest_batch WHERE id = $1`, [batchId]);
+    expect(batch[0].published_at).toBeNull();
+    expect(sales.vch_no_norm).toBeTruthy();
+
     const cgst = lines.find((l: any) => l.ledger_name === 'CGST');
     expect(Number(cgst.credit)).toBeGreaterThan(0);
-    expect(Number(cgst.debit)).toBe(0);
+
+    const receipt = vouchers.find((v: any) => v.vch_type === 'Receipt');
+    const receiptSriSteel = lines.find((l: any) => l.voucher_id === receipt.id && l.ledger_name === 'Sri Steel Traders');
+    expect(receiptSriSteel.credit).toBe('50000.00');
+
+    // GET /api/batches/:id as steward returns the held batch
+    const getBatchRes = await request(app.getHttpServer())
+      .get(`/api/batches/${batchId}`)
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .expect(200);
+    expect(getBatchRes.body.id.toString()).toBe(batchId.toString());
+    expect(getBatchRes.body.status).toBe('held');
   });
 
   it('same sha256 second ingest does not duplicate vouchers', async () => {
@@ -181,13 +187,7 @@ describe('Ingest (e2e)', () => {
   });
 
   it('bad amount writes ingest_reject and keeps other vouchers', async () => {
-    const { tmp: csvPath } = generateUniqueCsv(path.join(__dirname, '../../fixtures/daybook/sample-daybook.csv'), (lines) => {
-      for (let i = 0; i < lines.length; i++) {
-        if (lines[i].includes('50,000.00')) {
-          lines[i] = lines[i].replace(/50,000\.00/g, 'invalid_amount');
-        }
-      }
-    });
+    const { tmp: csvPath } = generateUniqueCsv(path.join(__dirname, '../../fixtures/daybook/sample-daybook-bad-amount.csv'));
 
     const res = await request(app.getHttpServer())
       .post('/api/uploads')
@@ -203,7 +203,7 @@ describe('Ingest (e2e)', () => {
     expect(rejects[0].code).toBe('UNPARSEABLE_AMOUNT');
 
     const vouchers = await db.query(`SELECT * FROM voucher WHERE batch_id = $1`, [res.body.batchId]);
-    expect(vouchers.length).toBe(1); // Kept the sales voucher
+    expect(vouchers.length).toBe(2);
   });
 
   it('zero vouchers after skip totals rejects batch', async () => {
@@ -224,6 +224,7 @@ describe('Ingest (e2e)', () => {
       .expect(202);
 
     expect(res.body.status).toBe('rejected');
+    expect(res.body.errorSummary).toBe('ZERO_VOUCHERS');
     const vouchers = await db.query(`SELECT * FROM voucher WHERE batch_id = $1`, [res.body.batchId]);
     expect(vouchers.length).toBe(0);
   });

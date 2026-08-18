@@ -46,19 +46,16 @@ export class IngestService {
     ip?: string,
     userAgent?: string,
   ) {
-    console.log('--- START PROCESS UPLOAD ---');
-    if (!file) throw new BadRequestException('No file provided');
+    if (!file) throw new BadRequestException('File is required');
 
     const validExtensions = ['.xlsx', '.xls', '.csv', '.zip'];
     const ext = file.originalname.substring(file.originalname.lastIndexOf('.')).toLowerCase();
     if (!validExtensions.includes(ext)) throw new BadRequestException('Invalid file extension');
 
     const sha256 = crypto.createHash('sha256').update(file.buffer).digest('hex');
-    console.log('--- SHA256:', sha256);
 
     let sourceFile = await this.sourceFileRepo.findOne({ where: { sha256 } });
     if (sourceFile) {
-      console.log('--- IS DUPLICATE ---');
       const existingBatch = await this.ingestBatchRepo.findOne({
         where: { fileSha256: sha256 },
         order: { uploadedAt: 'DESC' },
@@ -79,7 +76,6 @@ export class IngestService {
     }
 
     const stored = await this.objectStore.put(sha256, file.buffer, file.mimetype);
-    console.log('--- STORED IN S3 ---');
 
     // fetch from object store
     const storedStream = await this.objectStore.get(stored.key);
@@ -135,8 +131,8 @@ export class IngestService {
       }
 
       let totalLines = 0;
-      let dSum = 0;
-      let cSum = 0;
+      let dSumCents = 0n;
+      let cSumCents = 0n;
 
       for (const rej of validated.rejects) {
         await queryRunner.manager.save(this.ingestRejectRepo.create({
@@ -154,8 +150,8 @@ export class IngestService {
           totalLines += v.lines.length;
           
           for (const line of v.lines) {
-            dSum += parseFloat(line.debit);
-            cSum += parseFloat(line.credit);
+            dSumCents += BigInt(line.debit.replace('.', ''));
+            cSumCents += BigInt(line.credit.replace('.', ''));
             uniqueLedgers.add(line.ledgerName);
           }
 
@@ -232,11 +228,22 @@ export class IngestService {
       batch.totalRows = totalLines;
       batch.acceptedRows = validated.vouchers.length;
       batch.rejectedRows = validated.rejects.length;
-      batch.debitSum = dSum > 0 ? dSum.toFixed(2) : '0.00';
-      batch.creditSum = cSum > 0 ? cSum.toFixed(2) : '0.00';
+
+      const formatCents = (cents: bigint) => {
+        const sign = cents < 0n ? '-' : '';
+        const abs = cents < 0n ? -cents : cents;
+        const s = abs.toString().padStart(3, '0');
+        return sign + s.slice(0, -2) + '.' + s.slice(-2);
+      };
+
+      batch.debitSum = dSumCents > 0n ? formatCents(dSumCents) : '0.00';
+      batch.creditSum = cSumCents > 0n ? formatCents(cSumCents) : '0.00';
       
-      const tol = parseFloat(process.env.DEBIT_CREDIT_TOLERANCE || '0.05');
-      if (Math.abs(dSum - cSum) > tol && batch.status !== 'rejected') {
+      const tolCents = BigInt(Math.round(parseFloat(process.env.DEBIT_CREDIT_TOLERANCE || '0.01') * 100));
+      const diff = dSumCents - cSumCents;
+      const absDiff = diff < 0n ? -diff : diff;
+
+      if (absDiff > tolCents && batch.status !== 'rejected') {
         batch.errorSummary = `OUT_OF_BALANCE: debit=${batch.debitSum} credit=${batch.creditSum}`;
       }
 
@@ -279,8 +286,8 @@ export class IngestService {
       status: batch.status,
       companyId: batch.companyId,
       tallyCompany: batch.tallyCompany,
-      periodFrom: batch.periodFrom ? batch.periodFrom.toISOString().split('T')[0] : null,
-      periodTo: batch.periodTo ? batch.periodTo.toISOString().split('T')[0] : null,
+      periodFrom: batch.periodFrom ? (typeof batch.periodFrom === 'string' ? batch.periodFrom : batch.periodFrom.toISOString().split('T')[0]) : null,
+      periodTo: batch.periodTo ? (typeof batch.periodTo === 'string' ? batch.periodTo : batch.periodTo.toISOString().split('T')[0]) : null,
       totalRows: batch.totalRows,
       acceptedRows: batch.acceptedRows,
       rejectedRows: batch.rejectedRows,

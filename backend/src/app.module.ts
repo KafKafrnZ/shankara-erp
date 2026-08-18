@@ -31,6 +31,8 @@ import { StorageModule } from './storage/storage.module';
         JWT_EXPIRES_IN: Joi.string().default('8h'),
         STORAGE_DIR: Joi.string().default('./var/uploads'),
         MAX_UPLOAD_BYTES: Joi.number().default(52428800),
+        DEBIT_CREDIT_TOLERANCE: Joi.number().default(0.01),
+        EXPECTED_TALLY_COMPANY_SUBSTR: Joi.string().default('shankara'),
       }),
     }),
     TypeOrmModule.forRootAsync({

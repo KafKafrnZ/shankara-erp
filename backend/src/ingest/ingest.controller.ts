@@ -25,17 +25,13 @@ export class IngestController {
       throw new BadRequestException('No file provided');
     }
 
-    try {
-      const result = await this.ingestService.processUpload(
-        file, dto, req.user.id, req.ip, req.headers['user-agent'] as string
-      );
-      if (result.status === 'duplicate') {
-        res.status(200).json(result);
-      } else {
-        res.status(202).json(result);
-      }
-    } catch (err) {
-      throw new BadRequestException(err.message || 'Upload failed');
+    const result = await this.ingestService.processUpload(
+      file, dto, req.user.id, req.ip, req.headers['user-agent'] as string
+    );
+    if (result.status === 'duplicate') {
+      res.status(200).json(result);
+    } else {
+      res.status(202).json(result);
     }
   }
 }
