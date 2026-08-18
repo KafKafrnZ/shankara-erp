@@ -57,7 +57,7 @@ export class VouchersService {
     const sourceFile = sfRes[0];
 
     await this.auditService.log({
-      userId: user.id, action: 'voucher_open', ip, userAgent, meta: { entityType: 'voucher', entityId: id }
+      userId: user.id, action: 'voucher_open', entityType: 'voucher', entityId: id, ip, userAgent, meta: {}
     });
 
     return {

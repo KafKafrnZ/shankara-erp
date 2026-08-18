@@ -62,7 +62,7 @@ export class IngestService {
       });
       const batchId = existingBatch ? existingBatch.id : 'unknown';
       await this.auditService.log({
-        userId, action: 'upload', ip, userAgent, meta: { sha256, batchId, duplicate: true },
+        userId, action: 'upload', entityType: 'ingest_batch', entityId: batchId, ip, userAgent, meta: { sha256, duplicate: true },
       });
 
       return {
@@ -111,6 +111,9 @@ export class IngestService {
         batch.status = 'rejected';
         batch.errorSummary = 'UNRECOGNIZED_LAYOUT';
         await queryRunner.manager.save(batch);
+        await this.auditService.log({
+          userId, action: 'upload', entityType: 'ingest_batch', entityId: batch.id, ip, userAgent, meta: { sha256: sourceFile.sha256, duplicate: false }
+        }, queryRunner.manager);
         await queryRunner.commitTransaction();
         return this.finishUpload(batch, sourceFile, userId, ip, userAgent);
       }
@@ -120,6 +123,9 @@ export class IngestService {
         batch.status = 'rejected';
         batch.errorSummary = 'COMPANY_MISMATCH';
         await queryRunner.manager.save(batch);
+        await this.auditService.log({
+          userId, action: 'upload', entityType: 'ingest_batch', entityId: batch.id, ip, userAgent, meta: { sha256: sourceFile.sha256, duplicate: false }
+        }, queryRunner.manager);
         await queryRunner.commitTransaction();
         return this.finishUpload(batch, sourceFile, userId, ip, userAgent);
       }
@@ -249,6 +255,10 @@ export class IngestService {
 
       await queryRunner.manager.save(batch);
 
+      await this.auditService.log({
+        userId, action: 'upload', entityType: 'ingest_batch', entityId: batch.id, ip, userAgent, meta: { sha256: sourceFile.sha256, duplicate: false }
+      }, queryRunner.manager);
+
       await queryRunner.commitTransaction();
       return this.finishUpload(batch, sourceFile, userId, ip, userAgent);
     } catch (error) {
@@ -264,9 +274,6 @@ export class IngestService {
   }
 
   private async finishUpload(batch: any, file: any, userId: string, ip: any, agent: any) {
-    await this.auditService.log({
-      userId, action: 'upload', ip, userAgent: agent, meta: { sha256: file.sha256, batchId: batch.id, duplicate: false },
-    });
     return {
       batchId: Number(batch.id),
       status: batch.status,
@@ -330,10 +337,12 @@ export class IngestService {
     batch.status = 'published';
     batch.publishedAt = new Date();
     batch.publishedBy = userId;
-    await this.ingestBatchRepo.save(batch);
 
-    await this.auditService.log({
-      userId, action: 'publish', ip, userAgent, meta: { batchId },
+    await this.dataSource.transaction(async manager => {
+      await manager.save(batch);
+      await this.auditService.log({
+        userId, action: 'publish', entityType: 'ingest_batch', entityId: batchId, ip, userAgent, meta: {}
+      }, manager);
     });
 
     return this.getBatch(batchId);
@@ -347,10 +356,12 @@ export class IngestService {
     batch.status = 'held';
     batch.publishedAt = null;
     batch.publishedBy = null;
-    await this.ingestBatchRepo.save(batch);
 
-    await this.auditService.log({
-      userId, action: 'unpublish', ip, userAgent, meta: { batchId },
+    await this.dataSource.transaction(async manager => {
+      await manager.save(batch);
+      await this.auditService.log({
+        userId, action: 'unpublish', entityType: 'ingest_batch', entityId: batchId, ip, userAgent, meta: {}
+      }, manager);
     });
 
     return this.getBatch(batchId);

@@ -19,7 +19,10 @@ export class AuthService {
     
     if (!user || !user.isActive) {
       await this.auditService.log({
+        userId: user ? user.id : null,
         action: 'login_failed',
+        entityType: 'app_user',
+        entityId: user ? user.id : undefined,
         ip,
         userAgent,
         meta: { email: loginDto.email, reason: !user ? 'not_found' : 'inactive' },
@@ -30,7 +33,10 @@ export class AuthService {
     const isMatch = await bcrypt.compare(loginDto.password, user.passwordHash);
     if (!isMatch) {
       await this.auditService.log({
+        userId: user.id,
         action: 'login_failed',
+        entityType: 'app_user',
+        entityId: user.id,
         ip,
         userAgent,
         meta: { email: loginDto.email, reason: 'invalid_password' },
@@ -41,6 +47,8 @@ export class AuthService {
     await this.auditService.log({
       userId: user.id,
       action: 'login',
+      entityType: 'app_user',
+      entityId: user.id,
       ip,
       userAgent,
       meta: { email: user.email },
@@ -64,6 +72,8 @@ export class AuthService {
     await this.auditService.log({
       userId,
       action: 'logout',
+      entityType: 'app_user',
+      entityId: userId,
       ip,
       userAgent,
     });
