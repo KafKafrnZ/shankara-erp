@@ -1,4 +1,4 @@
-import { Injectable, Inject, BadRequestException, ConflictException } from '@nestjs/common';
+import { Injectable, Inject, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { SourceFile } from './entities/source-file.entity';
@@ -128,8 +128,11 @@ export class IngestService {
       };
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      if (error.code === '23505') {
-        // Unique violation fallback if concurrent upload happened
+      const code =
+        typeof error === 'object' && error !== null && 'code' in error
+          ? String((error as { code: unknown }).code)
+          : '';
+      if (code === '23505') {
         return this.processUpload(file, dto, userId, ip, userAgent);
       }
       throw error;

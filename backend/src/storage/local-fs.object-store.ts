@@ -3,7 +3,6 @@ import { ConfigService } from '@nestjs/config';
 import { ObjectStore, StoredObject } from './object-store';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as crypto from 'crypto';
 
 @Injectable()
 export class LocalFsObjectStore implements ObjectStore {

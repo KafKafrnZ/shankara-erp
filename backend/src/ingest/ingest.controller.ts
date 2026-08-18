@@ -1,9 +1,12 @@
 import { Controller, Post, UseInterceptors, UploadedFile, Body, Req, Res, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import type { Request, Response } from 'express';
 import { Roles } from '../auth/roles.decorator';
 import { IngestService } from './ingest.service';
 import { UploadDto } from './dto/upload.dto';
-import type { Response } from 'express';
+import { AuthUser } from '../auth/auth-user';
+
+type AuthedRequest = Request & { user: AuthUser };
 
 @Controller('uploads')
 export class IngestController {
@@ -15,7 +18,7 @@ export class IngestController {
   async upload(
     @UploadedFile() file: Express.Multer.File,
     @Body() dto: UploadDto,
-    @Req() req: any,
+    @Req() req: AuthedRequest,
     @Res() res: Response
   ) {
     if (!file) {

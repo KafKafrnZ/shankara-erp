@@ -1,18 +1,30 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { AppModule } from '../src/app.module';
+import { DataSource } from 'typeorm';
+import request from 'supertest';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as crypto from 'crypto';
-const request = require('supertest');
+import { AppModule } from '../src/app.module';
 
 describe('UploadController (e2e)', () => {
   let app: INestApplication;
   let stewardToken: string;
   let financeToken: string;
-  let dbConnection: any;
+  let dbConnection: DataSource;
+  let tmpDir: string;
+  let fixturePathCsv: string;
+  let fixturePathTxt: string;
+  let expectedSha: string;
 
   beforeAll(async () => {
+    const stewardPassword = process.env.SEED_STEWARD_PASSWORD;
+    const financePassword = process.env.SEED_FINANCE_PASSWORD;
+    if (!stewardPassword || !financePassword) {
+      throw new Error('SEED_STEWARD_PASSWORD and SEED_FINANCE_PASSWORD must be set');
+    }
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -26,12 +38,11 @@ describe('UploadController (e2e)', () => {
     }));
     await app.init();
 
-    // Login to get tokens
     const sRes = await request(app.getHttpServer())
       .post('/api/auth/login')
       .send({
         email: 'steward@shankara.local',
-        password: process.env.SEED_STEWARD_PASSWORD || 'steward_dev_pass',
+        password: stewardPassword,
       });
     stewardToken = sRes.body.accessToken;
 
@@ -39,29 +50,27 @@ describe('UploadController (e2e)', () => {
       .post('/api/auth/login')
       .send({
         email: 'finance@shankara.local',
-        password: process.env.SEED_FINANCE_PASSWORD || 'finance_dev_pass',
+        password: financePassword,
       });
     financeToken = fRes.body.accessToken;
 
-    const { DataSource } = require('typeorm');
     dbConnection = app.get(DataSource);
-  });
 
-  afterAll(async () => {
-    await app.close();
-  });
-
-  const uniqueToken = Date.now().toString() + Math.random().toString();
-  const fixturePathCsv = path.resolve(__dirname, `../../fixtures/daybook/upload-test-${uniqueToken}.csv`);
-  const fixturePathTxt = path.resolve(__dirname, `../../fixtures/daybook/bad-${uniqueToken}.txt`);
-  let expectedSha: string;
-
-  beforeAll(() => {
-    fs.mkdirSync(path.dirname(fixturePathCsv), { recursive: true });
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'shankara-upload-'));
+    const uniqueToken = `${Date.now()}-${process.pid}`;
+    fixturePathCsv = path.join(tmpDir, `upload-test-${uniqueToken}.csv`);
+    fixturePathTxt = path.join(tmpDir, `bad-${uniqueToken}.txt`);
     const uniqueContent = `mock,csv,${uniqueToken}\n`;
     fs.writeFileSync(fixturePathCsv, uniqueContent);
     fs.writeFileSync(fixturePathTxt, 'bad content');
     expectedSha = crypto.createHash('sha256').update(uniqueContent).digest('hex');
+  });
+
+  afterAll(async () => {
+    await app.close();
+    if (tmpDir) {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 
   it('unauthenticated upload is 401', async () => {
