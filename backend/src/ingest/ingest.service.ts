@@ -15,7 +15,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { parseDayBookFile } from './parse/daybook.parser';
+import { parseDayBookStream } from './parse/daybook.parser';
 import { validateDayBook } from './validate/daybook.validator';
 
 @Injectable()
@@ -81,23 +81,13 @@ export class IngestService {
     const stored = await this.objectStore.put(sha256, file.buffer, file.mimetype);
     console.log('--- STORED IN S3 ---');
 
-    const tmpFile = path.join(os.tmpdir(), `upload-${Date.now()}-${Math.random()}${ext}`);
-    fs.writeFileSync(tmpFile, file.buffer);
-    
-    let parsedResult;
-    try {
-      console.log('--- PARSING FILE ---');
-      parsedResult = await parseDayBookFile(tmpFile);
-      console.log('--- PARSE DONE ---');
-    } finally {
-      if (fs.existsSync(tmpFile)) {
-        try {
-          fs.unlinkSync(tmpFile);
-        } catch (e) {
-          console.error('Failed to unlink tmp file:', e.message);
-        }
-      }
+    // fetch from object store
+    const storedStream = await this.objectStore.get(stored.key);
+    if (!storedStream) {
+      throw new BadRequestException('Failed to retrieve file from storage');
     }
+
+    const parsedResult = await parseDayBookStream(storedStream, ext);
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -112,14 +102,14 @@ export class IngestService {
 
       const batch = this.ingestBatchRepo.create({
         sourceFileId: sourceFile.id, fileSha256: sha256,
-        tallyCompany: parsedResult.detect.titleCompany || 'unknown',
+        tallyCompany: (parsedResult.detect as any).titleCompany || 'unknown',
         companyId: dto.companyId, branchId: dto.branchId,
         reportType: 'DAY_BOOK',
-        periodFrom: parsedResult.detect.periodFrom ? new Date(parsedResult.detect.periodFrom) : null,
-        periodTo: parsedResult.detect.periodTo ? new Date(parsedResult.detect.periodTo) : null,
+        periodFrom: (parsedResult.detect as any).periodFrom ? new Date((parsedResult.detect as any).periodFrom) : null,
+        periodTo: (parsedResult.detect as any).periodTo ? new Date((parsedResult.detect as any).periodTo) : null,
         status: 'held', uploadedBy: userId,
-      });
-      await queryRunner.manager.save(batch);
+        errorSummary: null,
+      });await queryRunner.manager.save(batch);
 
       if (!parsedResult.detect.ok) {
         batch.status = 'rejected';
@@ -277,6 +267,7 @@ export class IngestService {
       sha256: file.sha256,
       originalName: file.originalName,
       bytes: Number(file.byteSize),
+      errorSummary: batch.errorSummary || undefined,
     };
   }
 

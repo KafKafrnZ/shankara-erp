@@ -227,13 +227,11 @@ export function parseDayBook(rows: string[][]): ParseResult {
   return { detect, vouchers, rejects };
 }
 
-export async function parseDayBookFile(filePath: string): Promise<ParseResult> {
-  const ext = filePath.toLowerCase().substring(filePath.lastIndexOf('.'));
-  
+export async function parseDayBookStream(stream: NodeJS.ReadableStream, ext: string): Promise<ParseResult> {
   if (ext === '.xlsx' || ext === '.xls') {
     const exceljs = require('exceljs');
     const workbook = new exceljs.Workbook();
-    await workbook.xlsx.readFile(filePath);
+    await workbook.xlsx.read(stream);
     const worksheet = workbook.worksheets[0];
     const rows: string[][] = [];
     worksheet.eachRow((row: any, rowNumber: number) => {
@@ -255,9 +253,8 @@ export async function parseDayBookFile(filePath: string): Promise<ParseResult> {
   } else {
     // CSV
     const rows: string[][] = [];
-    const fileStream = fs.createReadStream(filePath);
     const rl = readline.createInterface({
-      input: fileStream,
+      input: stream,
       crlfDelay: Infinity
     });
 
@@ -266,4 +263,10 @@ export async function parseDayBookFile(filePath: string): Promise<ParseResult> {
     }
     return parseDayBook(rows);
   }
+}
+
+export async function parseDayBookFile(filePath: string): Promise<ParseResult> {
+  const ext = filePath.toLowerCase().substring(filePath.lastIndexOf('.'));
+  const stream = fs.createReadStream(filePath);
+  return parseDayBookStream(stream, ext);
 }

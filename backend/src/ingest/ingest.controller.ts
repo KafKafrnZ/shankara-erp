@@ -35,19 +35,23 @@ export class IngestController {
         res.status(202).json(result);
       }
     } catch (err) {
-      console.error('INGEST_ERROR_CRASH_DEBUG:', err);
       throw new BadRequestException(err.message || 'Upload failed');
     }
   }
+}
+
+@Controller('batches')
+export class BatchesController {
+  constructor(private readonly ingestService: IngestService) {}
 
   @Roles('steward')
-  @Get('batches/:id')
+  @Get(':id')
   async getBatch(@Param('id') id: string) {
     return this.ingestService.getBatch(Number(id));
   }
 
   @Roles('steward')
-  @Get('batches/:id/rejects')
+  @Get(':id/rejects')
   async getBatchRejects(
     @Param('id') id: string,
     @Query('page') page: string = '1',

@@ -3,7 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MulterModule } from '@nestjs/platform-express';
 import * as multer from 'multer';
-import { IngestController } from './ingest.controller';
+import { IngestController, BatchesController } from './ingest.controller';
 import { IngestService } from './ingest.service';
 import { SourceFile } from './entities/source-file.entity';
 import { IngestBatch } from './entities/ingest-batch.entity';
@@ -35,7 +35,7 @@ import { StorageModule } from '../storage/storage.module';
       }),
     }),
   ],
-  controllers: [IngestController],
+  controllers: [IngestController, BatchesController],
   providers: [IngestService],
 })
 export class IngestModule {}
