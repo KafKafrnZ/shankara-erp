@@ -316,4 +316,39 @@ export class IngestService {
       total,
     };
   }
+
+  async publishBatch(batchId: number, userId: string, ip?: string, userAgent?: string) {
+    const batch = await this.ingestBatchRepo.findOneBy({ id: String(batchId) });
+    if (!batch) throw new BadRequestException('Batch not found');
+    if (batch.status === 'published') return this.getBatch(batchId);
+    if (batch.status === 'rejected') throw new BadRequestException('Cannot publish rejected batch');
+
+    batch.status = 'published';
+    batch.publishedAt = new Date();
+    batch.publishedBy = userId;
+    await this.ingestBatchRepo.save(batch);
+
+    await this.auditService.log({
+      userId, action: 'publish', ip, userAgent, meta: { batchId },
+    });
+
+    return this.getBatch(batchId);
+  }
+
+  async holdBatch(batchId: number, userId: string, ip?: string, userAgent?: string) {
+    const batch = await this.ingestBatchRepo.findOneBy({ id: String(batchId) });
+    if (!batch) throw new BadRequestException('Batch not found');
+    if (batch.status === 'held') return this.getBatch(batchId);
+
+    batch.status = 'held';
+    batch.publishedAt = null;
+    batch.publishedBy = null;
+    await this.ingestBatchRepo.save(batch);
+
+    await this.auditService.log({
+      userId, action: 'hold', ip, userAgent, meta: { batchId },
+    });
+
+    return this.getBatch(batchId);
+  }
 }

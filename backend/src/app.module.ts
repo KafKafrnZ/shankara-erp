@@ -13,6 +13,9 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RolesGuard } from './auth/roles.guard';
 
 import { StorageModule } from './storage/storage.module';
+import { SearchModule } from './search/search.module';
+import { VouchersModule } from './vouchers/vouchers.module';
+import { MetaModule } from './meta/meta.module';
 
 @Module({
   imports: [
@@ -56,6 +59,9 @@ import { StorageModule } from './storage/storage.module';
     UsersModule,
     AuditModule,
     StorageModule,
+    SearchModule,
+    VouchersModule,
+    MetaModule,
   ],
   providers: [
     {

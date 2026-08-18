@@ -55,4 +55,16 @@ export class BatchesController {
   ) {
     return this.ingestService.getBatchRejects(Number(id), Number(page), Number(pageSize));
   }
+
+  @Roles('steward')
+  @Post(':id/publish')
+  async publishBatch(@Param('id') id: string, @Req() req: AuthedRequest) {
+    return this.ingestService.publishBatch(Number(id), req.user.id, req.ip, req.headers['user-agent'] as string);
+  }
+
+  @Roles('steward')
+  @Post(':id/hold')
+  async holdBatch(@Param('id') id: string, @Req() req: AuthedRequest) {
+    return this.ingestService.holdBatch(Number(id), req.user.id, req.ip, req.headers['user-agent'] as string);
+  }
 }

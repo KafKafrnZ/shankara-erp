@@ -248,16 +248,4 @@ describe('Ingest (e2e)', () => {
     expect(res.body.status).toBe('rejected');
     expect(res.body.errorSummary).toBe('COMPANY_MISMATCH');
   });
-
-  it('publish and search routes do not exist yet', async () => {
-    await request(app.getHttpServer())
-      .post('/api/batches/123/publish')
-      .set('Authorization', `Bearer ${stewardToken}`)
-      .expect(404);
-
-    await request(app.getHttpServer())
-      .post('/api/search')
-      .set('Authorization', `Bearer ${stewardToken}`)
-      .expect(404);
-  });
 });
