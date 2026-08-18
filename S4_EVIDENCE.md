@@ -3,7 +3,7 @@
 | # | Gate | Evidence |
 |---|---|---|
 | 1 | `npx tsc --noEmit -p tsconfig.build.json` exit 0 | Confirmed ✅ |
-| 2 | `npm test` — all §6 tests pass | `Test Suites: 3 passed, 3 total | Tests: 21 passed, 21 total` ✅ |
+| 2 | `npm test` — all §6 tests pass | `Test Suites: 3 passed, 3 total | Tests: 22 passed, 22 total` ✅ |
 | 3 | `npm run test:e2e` still 16 passed | `Test Suites: 2 passed, 2 total | Tests: 16 passed, 16 total` ✅ |
 | 4 | `sample-daybook.csv` → 2 vouchers, 6 lines | Tested & passed. ✅ |
 | 5 | Sales `vchNoNorm` is `invhyd242511820` | Tested & passed. ✅ |

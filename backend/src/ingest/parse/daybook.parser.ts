@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as readline from 'readline';
 
 function parseCsvLine(line: string): string[] {
-  const cols = [];
+  const cols: string[] = [];
   let cur = '';
   let inQuotes = false;
   for (let i = 0; i < line.length; i++) {
@@ -142,15 +142,11 @@ export function parseDayBook(rows: string[][]): ParseResult {
       }
 
       if ((dAmt || cAmt) && rawPart.trim()) {
-        const val = dAmt || cAmt || '0.00';
-        const sideInFile = dAmt ? 'debit' : 'credit';
-        currentVoucher.extra._headerSide = sideInFile; // internal use
-        
         const line: ParsedLine = {
           lineNo: currentVoucher.lines.length + 1,
           ledgerName: rawPart.trim(),
-          debit: sideInFile === 'debit' ? val : '0.00',
-          credit: sideInFile === 'credit' ? val : '0.00',
+          debit: dAmt || '0.00',
+          credit: cAmt || '0.00',
           extra: {},
         };
         for (const [colName, colIdx] of Object.entries(columns)) {
@@ -184,15 +180,11 @@ export function parseDayBook(rows: string[][]): ParseResult {
           currentVoucher.narration = rawPart.trim();
         }
       } else if ((dAmt || cAmt) && rawPart.trim()) {
-        const val = dAmt || cAmt || '0.00';
-        const headerSide = currentVoucher.extra._headerSide || 'debit';
-        const assignedSide = headerSide === 'debit' ? 'credit' : 'debit';
-
         const line: ParsedLine = {
           lineNo: currentVoucher.lines.length + 1,
           ledgerName: rawPart.trim(),
-          debit: assignedSide === 'debit' ? val : '0.00',
-          credit: assignedSide === 'credit' ? val : '0.00',
+          debit: dAmt || '0.00',
+          credit: cAmt || '0.00',
           extra: {},
         };
         for (const [colName, colIdx] of Object.entries(columns)) {
@@ -207,8 +199,6 @@ export function parseDayBook(rows: string[][]): ParseResult {
 
   // Calculate total amounts and fix receipt partyName
   for (const v of vouchers) {
-    delete v.extra._headerSide;
-    
     let sumD = 0;
     let sumC = 0;
     for (const l of v.lines) {

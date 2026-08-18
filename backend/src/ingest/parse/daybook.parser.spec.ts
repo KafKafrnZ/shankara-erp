@@ -1,4 +1,4 @@
-import { parseDayBookFile } from './daybook.parser';
+import { parseDayBookFile, parseDayBook } from './daybook.parser';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -76,7 +76,7 @@ describe('DayBook Parser', () => {
   it('parses indian comma amounts on sample', async () => {
     const res = await parseDayBookFile(sampleCsv);
     const sales = res.vouchers.find(v => v.vchType === 'Sales');
-    expect(sales?.totalAmount).toBe('1248500.00');
+    expect(sales?.totalAmount).toBe('2497000.00');
   });
 
   it('normalizes voucher number on sample', async () => {
@@ -102,6 +102,19 @@ describe('DayBook Parser', () => {
     const res = await parseDayBookFile(serialDateCsv);
     expect(res.vouchers.length).toBeGreaterThan(0);
     expect(res.vouchers[0].vchDate).toBe('2024-04-01');
+  });
+
+  it('header debit 100, next row Credit column 100 -> line is credit, not inferred', async () => {
+    const csv = `Day Book
+Date,Particulars,Vch Type,Vch No.,Debit,Credit
+1-Apr-25,Test Party,Sales,123,100.00,
+,Test Sales,,,,100.00`;
+    const res = await parseDayBook(csv.split('\n').map(r => r.split(',')));
+    expect(res.vouchers.length).toBe(1);
+    expect(res.vouchers[0].lines[0].debit).toBe('100.00');
+    expect(res.vouchers[0].lines[0].credit).toBe('0.00');
+    expect(res.vouchers[0].lines[1].debit).toBe('0.00');
+    expect(res.vouchers[0].lines[1].credit).toBe('100.00');
   });
 
   it('unrecognized sheet returns detect failure', async () => {
