@@ -1,0 +1,252 @@
+# Shankara Buildpro — Phase 1 + 2 report, and Phase 3 scope
+
+**Read this first if you are Claude, Gemini, or any other agent.**  
+**Repo:** https://github.com/KafKafrnZ/shankara-erp  
+**Date:** 2026-08-19  
+**Host of record (benchmarks):** Windows, 11th Gen Intel Core i3-1115G4 @ 3.00 GHz
+
+| Phase | Status | Evidence |
+|---|---|---|
+| **1** Day Book ingest / search / retrieve | **COMPLETE** | `PHASE_1_EVIDENCE.md` → `PHASE_1_STATUS=COMPLETE` |
+| **2** Sales Register on the same path | **COMPLETE** | `PHASE_2_EVIDENCE.md` → `PHASE_2_STATUS=COMPLETE` |
+| **3** Search-engine quality | **NOT STARTED** | No S17 brief yet. Do not implement. |
+
+Independent human review accepted every S-step against live Docker + `http://127.0.0.1:3000`. Do not take implementer chat as proof.
+
+---
+
+## Note for Claude
+
+You are **not** starting Phase 1 or Phase 2. Those are closed.
+
+- **Do not** reopen S0–S16. **Do not** rewrite Day Book parse rules. **Do not** restore `parseFloat` on money. **Do not** `TRUNCATE voucher`. **Do not** drop SYN9 (20k) rows.
+- **Do not** add OpenSearch client code, AG Grid, mapping UI, Purchase Register, Stock, Trial Balance, GST filing, or “Create Voucher” until a **new** `S17_BRIEF.md` (or later) is written by the human and says you may.
+- Old `S3_BRIEF.md`–`S10_BRIEF.md` still say “Phase 2 is forbidden.” That lock is **expired**. They are history. Current product law is this file + `PHASE_1_AUDIT.md` §1 + `PHASE_2_AUDIT.md` §0.2.
+- Official search p95 is **135 ms** (Phase 1, 20k SYN9, worst of three shapes). Do not invent a new p95. Do not re-run `s9-bench.ts` unless the human asks.
+- If asked to implement Phase 3, **stop and wait for S17_BRIEF.md**. This file only describes intended scope so you do not guess.
+
+---
+
+## 1. Product (unchanged across phases)
+
+Tally is the **book of record**. This system is a **read-only** ingest / search / retrieve layer for Tally Excel/CSV exports.
+
+It does **not** post, alter, or write back to Tally. There is no Create Voucher. If Tally and this system disagree, **Tally wins**. Every fact row has `batch_id` + `source_row_no`. Original file bytes are kept (SHA-256 object store).
+
+**Roles:** `steward` (global, may set any `companyId` on upload), `finance`, `branch` (`company_id` in SQL `WHERE`). Unpublished / held batches are invisible to finance and branch.
+
+**Money:** integer paise (`backend/src/ingest/parse/money.ts`), round-half-up on the 3rd decimal. No IEEE-754 `parseFloat` on amounts going to SQL.
+
+---
+
+## 2. Architecture as built (Phases 1–2)
+
+```
+Steward browser (Vite :5173)
+    │  JWT in sessionStorage sb.accessToken
+    │  proxy /api → 127.0.0.1:3000
+    ▼
+NestJS 11 API
+    ├─ POST /api/uploads          steward; SHA-256 store; detect → parse → validate → upsert
+    ├─ POST /api/batches/:id/publish|hold
+    ├─ POST /api/search           SQL on Postgres; RBAC in WHERE
+    ├─ GET  /api/vouchers/:id     lines + source.sha256
+    └─ GET  /api/meta/as-of       MAX(published_at)
+    │
+    ├─ PostgreSQL 16  via PgBouncer :6432  (TypeORM synchronize:false)
+    ├─ Local FS object store  {aa}/{bb}/{sha256}
+    └─ Redis + OpenSearch in compose  — unused in Phase 1–2
+```
+
+**Detect router** (`detectReport`):
+
+1. Day Book fingerprint (title `day book` + Date/Particulars/Vch Type/Vch No/Debit/Credit) → `DAY_BOOK`
+2. Else Sales Register (title `sales register`, no `day book`, invoice/amount headers) → `SALES_REGISTER`
+3. Else `UNRECOGNIZED_LAYOUT`
+
+If both title strings appear, **Day Book wins**.
+
+**Persistence:** one `voucher` + `voucher_line` model for both reports. `ingest_batch.report_type` is `DAY_BOOK` or `SALES_REGISTER`. Unique `(company_id, vch_type, vch_no, vch_date, valid_to) NULLS NOT DISTINCT`. SHA-256 duplicate → HTTP `duplicate`. Content change → version (`valid_to`).
+
+**Search:** parameterized SQL only. `ILIKE` is always OR-ed so party names with digits still match. `LIMIT`/`OFFSET` are bound parameters.
+
+---
+
+## 3. Phase 1 — what shipped and the official bench
+
+**Scope:** one company (`SHANKARA_HYD`), one report (**Day Book**), end-to-end: auth, object store, detect/parse/validate/upsert/publish, SQL search, voucher pane, as-of IST, audit.
+
+**Fixture contract** (`fixtures/daybook/EXPECTED.md`): 2 vouchers, 6 lines. `INV/HYD/24-25/11820` Sales, party `Sri Steel Traders`, total **`1248500.00`**, CGST **credit `112365.00`**. `RCT/HYD/2401` Receipt `50000.00`.
+
+### 3.1 Official search p95 (gate 24) — copy these numbers
+
+Synthetic **N = 20,000** vouchers `SYN9/{n}`, HTTP upload + publish, batch **345**. Bench: warmup 10, then 100 measured `POST /api/search` per shape. p95 = index 94.
+
+```
+shape          n    p50_ms    p95_ms    p99_ms    hits_min
+vch            100  80        114       132       1
+party          100  83        135       148       1
+amount         100  95        129       132       20
+
+Worst p95: 135 ms     bar was ≤ 200 ms
+```
+
+Host: Windows i3-1115G4. SQL `SYN9/%` current count = 20000.
+
+**Rejected / superseded p95 tables (do not quote):**
+
+| Table | Worst p95 | Why discarded |
+|---|---|---|
+| 42 ms then 115 ms | invented `ECONNREFUSED` catch | Fake |
+| 301 ms (party) | live, btree only, cold | Honest, over bar |
+| 228 ms (amount) | live, GIN present, noisy | Honest, over bar |
+| **135 ms (party)** | independent re-run of `s9-bench.ts` | **Official** |
+
+Indexes: btree `idx_voucher_s9_vch/_amt/_pty` + GIN `pg_trgm` on `party_name` and `narration`. Planner may still seq-scan the combined `OR`; 20k still met 200 ms on a quiet machine.
+
+### 3.2 Phase 1 post-audit (before Phase 2)
+
+Fixed: integer paise; `VOUCHER_HAS_NO_VALID_LINES` instead of silent drop; calendar dates; parameterized LIMIT; `is_deleted` on GET voucher; trailing Dr/Cr suffix; `master_ledger DO NOTHING`. Steward `companyId` documented as global on purpose.
+
+---
+
+## 4. Phase 2 — what shipped
+
+**Scope (narrower than the 2026-08-17 architecture essay):** **Sales Register only**, same APIs and UI shell. Not Purchase, not mapping UI, not OpenSearch, not a second company switcher.
+
+| Step | What |
+|---|---|
+| S11 | Detect `SALES_REGISTER`; upload rejected `SALES_REGISTER_NOT_IMPLEMENTED` |
+| S12 | `parseSalesRegister`: one invoice row → one voucher; party debit + Sales/CGST/SGST credits |
+| S13 | Upsert held by default; SHA duplicate no extra current rows |
+| S14 | SQL search + GET; `vchDate` formatted from local Y-M-D (not UTC `toISOString` → off-by-one) |
+| S15 | One Upload dropzone; held → Publish button; reject shows `errorSummary` |
+| S16 | Live evidence table |
+
+**Sales fixture** (`fixtures/sales-register/EXPECTED.md`):
+
+| Vch | Party | Total | Lines |
+|---|---|---|---|
+| `INV/SR/1` | Sri Steel Traders | `1248500.00` | party Dr 1248500; Sales Cr 1023770; CGST Cr 112365; SGST Cr 112365 |
+| `INV/SR/2` | Apex Pipes | `59000.00` | 4 lines (50000 + 4500 + 4500) |
+
+Independent S16 live (2026-08-19): unauth search **401**; finance upload **403**; published sales search `INV/SR/1` hit 1–3; GET 4 lines + `source.sha256`; held unique `INV/SR/1-…` finance **total=0**; SYN9 still **20000**.
+
+**Operational nit:** the committed `sample-sales-register.csv` SHA may already exist as a **held** batch. Re-upload is `duplicate`. Search `INV/SR/1` then hits **published suffixed** e2e copies first until that held batch is published. Hold/publish semantics are correct.
+
+No Phase 2 20k sales bench was required or run. Do not invent one.
+
+---
+
+## 5. Tests at Phase 2 close (independent)
+
+| Suite | Result |
+|---|---|
+| `npx tsc --noEmit -p tsconfig.build.json` | exit 0 |
+| `npm test` (backend) | **40 / 40** |
+| `npm run test:e2e` | **39 / 39** |
+| `cd frontend && npm run build` | exit 0 (S15) |
+| `git grep -n opensearch -- backend/src` | empty |
+
+---
+
+## 6. Still open (do not “fix” unless a human asks)
+
+1. **No real Tally export** from a live Shankara company has been parsed. Fixtures are hand-built / synthetic.
+2. Health `GET /api/health` `asOf` is always `null`. Real as-of is `GET /api/meta/as-of`.
+3. Search always ORs `ILIKE '%q%'`. Fine at current size; expensive for amount-shaped `q` on huge tables.
+4. E2e clones inflate `Sri Steel` / `INV/SR/%` hit totals. Do **not** `TRUNCATE`.
+5. Compose still runs OpenSearch. **Unused** through Phase 2.
+
+---
+
+## 7. Phase 3 — scope and architecture (not started)
+
+The 2026-08-17 architecture essay called Phase 3 “search-engine quality” (OpenSearch, typeahead, fuzz, facets, dossiers). **This program will do a thinner, sequential Phase 3.** Briefs (S17+) are **not written yet**. Do not code from this section.
+
+### 7.1 Goal
+
+Finance can type the way they remember (typos, partial vch, party nickname) and still get the **same voucher** in the top 3, without a second book of record and without breaking RBAC.
+
+Postgres remains the **retrieve source of truth**. If a search index is added, it is a **projection of published, current vouchers**. Hold / unpublish must drop hits. Branch `company_id` filter stays in the serving query, not only in JS.
+
+### 7.2 In scope (intended)
+
+1. **Gold set (mandatory before any cluster):** 10 frozen queries with expected `vch_no` in hit 1–3 (mix of Day Book + Sales Register). Plus a small typo set (`shankra`, `inv sr 1`, `apex pipe`). Written to `fixtures/search/GOLD.md`. Measured on SQL **first**.
+2. **OpenSearch as index, not source of truth:** index only `valid_to IS NULL AND is_deleted = false` rows from **published** batches. Fields: `company_id`, `vch_no`, `vch_no_norm`, `party_name`, `total_amount`, `narration`, `vch_date`, `vch_type`, `batch_id`. Sync on publish and on hold/unpublish (delete or mark unpublished).
+3. **`POST /api/search`:** may query the index for candidate ids, then **load lines and lineage from Postgres**. If OpenSearch is down, **SQL fallback** (today’s path). Never return a hit that SQL visibility would hide.
+4. **Typeahead / light fuzz** on party and vch_no only. No “Google” marketing. No item/HSN dossier.
+5. **UI:** still **one search box**. Optional highlight of the match. No AG Grid. No Parties/Items pills.
+6. **Evidence:** gold-set pass table + typo-set table + “OS down → SQL still works” + branch still cannot see `OTHER_CO` + `git grep` shows OS usage is isolated behind an interface.
+
+### 7.3 Out of Phase 3
+
+- Purchase Register, Ledger, Outstanding, Stock Summary, Trial Balance
+- Mapping UI / saved column templates / zip-of-many-files
+- GST returns, IRN, e-way, posting
+- AG Grid, GraphQL, Kafka, Prisma, Next.js
+- “5,000 concurrent users” load test
+- Replacing SQL retrieve with OS-only GET voucher
+- Changing Phase 1 p95 135 ms retroactively
+
+Those deferred items (Purchase, mapping, more companies) are **later than Phase 3**, not a side quest inside it.
+
+### 7.4 Architecture sketch (Phase 3)
+
+```
+publish / hold ──► Postgres (source of truth)
+                 └► indexer (best-effort) ──► OpenSearch
+                                                │
+POST /search ──► visibility SQL (RBAC, published, current)
+                 └► optional OS query for ranking/candidates
+                      ids intersected with SQL-visible set
+GET /vouchers/:id ──► Postgres only
+```
+
+Compose already has `shankara-opensearch`. Phase 3 may **wire** it. Until S17 exists, `backend/src` must stay free of an OpenSearch client.
+
+### 7.5 Suggested step order (names only; no work)
+
+| Step | Intent |
+|---|---|
+| S17 | Gold set + SQL baseline measurements (no OS client) |
+| S18 | Indexer: published current vouchers → OS; hold removes them |
+| S19 | Search uses OS candidates + SQL visibility; SQL fallback |
+| S20 | Typo/fuzz on party + vch_no; gold + typo sets pass |
+| S21 | UI: still one box; optional highlight |
+| S22 | `PHASE_3_EVIDENCE.md` live gates |
+
+**Do not implement S17–S22 until the human issues `S17_BRIEF.md`.**
+
+---
+
+## 8. File map
+
+| File | Role |
+|---|---|
+| `PHASE_STATUS.md` | **This file.** Claude/Gemini starting point. |
+| `PHASE_1_AUDIT.md` / `PHASE_1_EVIDENCE.md` / `PHASE_1_RESULTS.md` | Phase 1 spec, gates, narrative |
+| `PHASE_1_UPDATES.md` | Post-audit money + drop-reject |
+| `PHASE_2_AUDIT.md` / `PHASE_2_EVIDENCE.md` | Phase 2 spec and gates |
+| `S3_BRIEF.md`–`S16_BRIEF.md` + `S*_EVIDENCE.md` | Closed work orders |
+| `fixtures/daybook/EXPECTED.md` | Day Book contract |
+| `fixtures/sales-register/EXPECTED.md` | Sales Register contract |
+
+---
+
+## 9. Official numbers (one page)
+
+| Item | Value |
+|---|---|
+| Phase 1 | COMPLETE |
+| Phase 2 | COMPLETE |
+| Phase 3 | not started |
+| SYN9 current vouchers | **20000** |
+| Search worst p95 | **135 ms** (party), 100 calls, i3-1115G4 |
+| p50 vch / party / amount | 80 / 83 / 95 ms |
+| Day Book fixture | 2 vouchers, 6 lines, `1248500.00` |
+| Sales fixture | 2 invoices, `1248500.00` + `59000.00` |
+| Backend unit | 40 passed |
+| Backend e2e | 39 passed |
+| Search engine today | Postgres SQL |
+| OpenSearch in `backend/src` | none |

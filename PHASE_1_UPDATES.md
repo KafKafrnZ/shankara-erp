@@ -1,8 +1,8 @@
-# Phase 1 — current status (read this first)
+# Phase 1 — post-audit notes
 
+**Start here:** `PHASE_STATUS.md` (Phase 1 + 2 results, official p95, Phase 3 scope).  
 **Date:** 2026-08-19  
-**Repo HEAD after this commit is the source of truth.**  
-**Phase 1 is complete.** Product Phase 2 has started as **S11 only** (detect router). Do not implement S12–S16 until S11 is independently accepted.
+**Phase 1 and Phase 2 are complete.** Do not reopen S0–S16. Phase 3 is not started.
 
 This file replaces `AUDIT_FIX_BRIEF.md`. That brief was a genuine post-Phase-1 code review. The items below were either **fixed in this pass** or **left open on purpose**. Do not re-implement S0–S10. Do not treat old `S*_BRIEF.md` “S10 is forbidden” / “do not start Phase 2” lines as current work orders — those steps are **closed history**.
 
@@ -14,15 +14,15 @@ You are not starting Phase 1. You are not writing another S-brief.
 
 - **Closed:** S0–S10, `PHASE_1_STATUS=COMPLETE`, official search p95 = **135 ms** (see `PHASE_1_RESULTS.md` and `S9_EVIDENCE.md`). Do not invent a new p95. Do not re-run `s9-bench.ts` unless a money-math change moved fixture totals (it must not).
 - **Binding history:** `PHASE_1_AUDIT.md`, `S3_BRIEF.md`–`S10_BRIEF.md`, `S*_EVIDENCE.md`. Useful if you need *why* a rule exists. Ignore their “next step is forbidden” sentences; they were sequential locks.
-- **Current product law:** Tally is the book of record. Read-only ingest / search / retrieve. Day Book only. SQL search. No OpenSearch client. No AG Grid. No “Create Voucher.” Steward is a **global** role (`company_id` null) and may set `companyId` on upload — that is intentional, not a missing grants table.
+- **Current product law:** Tally is the book of record. Read-only ingest / search / retrieve. Day Book **and** Sales Register. SQL search. No OpenSearch client until Phase 3 briefs exist. No AG Grid. No “Create Voucher.” Steward is a **global** role (`company_id` null) and may set `companyId` on upload — that is intentional, not a missing grants table.
 - **This pass (post-audit):** integer paise money, voucher-drop reject, parameterized `LIMIT`/`OFFSET`, `is_deleted` on GET voucher, `master_ledger` `DO NOTHING`, calendar check on `DD-MM-YYYY` / `D-MMM-YY` / ISO dates, leftover reasoning-comments removed.
 - **Still open (do not “fix” unless a human asks):**
   1. No **real Tally Day Book** from a live company has been parsed yet. Do not invent extra header aliases without a real file.
-  2. `GET /api/vouchers/:id` can still show `vchDate` one calendar day earlier than SQL (`toISOString()` UTC). SQL date is correct (`2025-04-01`).
+  2. `GET /api/vouchers/:id` date off-by-one was **fixed in S14** (local Y-M-D, not UTC `toISOString`).
   3. `GET /api/health` `asOf` is always `null`. Real as-of is `GET /api/meta/as-of`.
   4. Search still **ORs** `ILIKE '%q%'` on every query so party names with digits match. Amount search for `1000` still counts all SYN9 rows. Fine at 20k.
   5. E2e clones inflate `Sri Steel` / `1248500` hit totals. Do **not** `TRUNCATE voucher`.
-- Phase 2 briefs exist: `PHASE_2_AUDIT.md`, `S11_BRIEF.md`–`S16_BRIEF.md`. **Current work is S11 only.** Do not implement S12–S16, Purchase, OpenSearch, or mapping UI. Do not reopen S9/S10.
+- Phase 2 is **COMPLETE**. Do not implement Phase 3 (OpenSearch, Purchase, mapping UI) until `S17_BRIEF.md` exists. Do not reopen S9/S10.
 
 ---
 
