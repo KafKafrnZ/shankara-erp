@@ -303,4 +303,100 @@ describe('Search & Vouchers (e2e)', () => {
     expect(actions).toContain('search');
     expect(actions).toContain('voucher_open');
   });
+
+  const generateUniqueSalesCsv = (originalPath: string) => {
+    const content = fs.readFileSync(originalPath, 'utf8');
+    const lines = content.split('\n');
+    const uniq = Date.now().toString() + Math.floor(Math.random() * 1000);
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].includes('INV/SR/1')) {
+        lines[i] = lines[i].replace('INV/SR/1', 'INV/SR/1-' + uniq);
+      }
+      if (lines[i].includes('INV/SR/2')) {
+        lines[i] = lines[i].replace('INV/SR/2', 'INV/SR/2-' + uniq);
+      }
+    }
+    lines.splice(1, 0, `"Run ${uniq}",,,,,,,,`);
+    const newContent = lines.join('\n');
+    const tmp = path.join(os.tmpdir(), `test-search-sales-${uniq}.csv`);
+    fs.writeFileSync(tmp, newContent);
+    tempFiles.push(tmp);
+    return { tmp, uniq };
+  };
+
+  it('sales register search and retrieve', async () => {
+    const { tmp: csvPath, uniq } = generateUniqueSalesCsv(path.join(__dirname, '../../fixtures/sales-register/sample-sales-register.csv'));
+
+    const uploadRes = await request(app.getHttpServer())
+      .post('/api/uploads')
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .field('companyId', 'SHANKARA_HYD')
+      .attach('file', csvPath)
+      .expect(202);
+    const batchId = uploadRes.body.batchId;
+
+    // held sales batch not searchable by finance
+    const searchHeld = await request(app.getHttpServer())
+      .post('/api/search')
+      .set('Authorization', `Bearer ${financeToken}`)
+      .send({ q: 'INV/SR/1-' + uniq })
+      .expect(200);
+    expect(searchHeld.body.total).toBe(0);
+
+    // publish
+    await request(app.getHttpServer())
+      .post(`/api/batches/${batchId}/publish`)
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .expect(200);
+
+    // published sales INV/SR/1 in search hit 1-3
+    const search1 = await request(app.getHttpServer())
+      .post('/api/search')
+      .set('Authorization', `Bearer ${financeToken}`)
+      .send({ q: 'INV/SR/1-' + uniq })
+      .expect(200);
+    expect(search1.body.hits.slice(0, 3).some((h: any) => h.vchNo === 'INV/SR/1-' + uniq)).toBe(true);
+
+    const hit1 = search1.body.hits.find((h: any) => h.vchNo === 'INV/SR/1-' + uniq);
+    expect(hit1.vchDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    
+    // Day Book 11820 still in hit 1-3
+    const { batchId: dbBatch, uniq: dbUniq } = await uploadSample();
+    await request(app.getHttpServer())
+      .post(`/api/batches/${dbBatch}/publish`)
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .expect(200);
+    const searchDb = await request(app.getHttpServer())
+      .post('/api/search')
+      .set('Authorization', `Bearer ${financeToken}`)
+      .send({ q: 'INV/HYD/' + dbUniq })
+      .expect(200);
+    expect(searchDb.body.hits.slice(0, 3).some((h: any) => h.vchNo === 'INV/HYD/' + dbUniq)).toBe(true);
+
+    // {"q":"Apex Pipes"} -> INV/SR/2
+    const search2 = await request(app.getHttpServer())
+      .post('/api/search')
+      .set('Authorization', `Bearer ${financeToken}`)
+      .send({ q: 'Apex Pipes' })
+      .expect(200);
+    expect(search2.body.hits.slice(0, 3).some((h: any) => h.vchNo === 'INV/SR/2-' + uniq)).toBe(true);
+
+    // {"q":"59000"} -> INV/SR/2
+    const search3 = await request(app.getHttpServer())
+      .post('/api/search')
+      .set('Authorization', `Bearer ${financeToken}`)
+      .send({ q: '59,000.00' })
+      .expect(200);
+    expect(search3.body.hits.slice(0, 3).some((h: any) => h.vchNo === 'INV/SR/2-' + uniq)).toBe(true);
+
+    // GET sales voucher lines + sha256
+    const getRes = await request(app.getHttpServer())
+      .get(`/api/vouchers/${hit1.id}`)
+      .set('Authorization', `Bearer ${financeToken}`)
+      .expect(200);
+    expect(getRes.body.lines.length).toBe(4);
+    expect(getRes.body.source.sha256).toBeTruthy();
+    expect(getRes.body.source.batchId).toBe(Number(batchId));
+    expect(getRes.body.vchDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
 });

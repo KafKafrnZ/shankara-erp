@@ -65,7 +65,7 @@ export class VouchersService {
       vchNo: row.vch_no,
       vchNoNorm: row.vch_no_norm,
       vchType: row.vch_type,
-      vchDate: row.vch_date && typeof row.vch_date !== 'string' ? row.vch_date.toISOString().split('T')[0] : row.vch_date,
+      vchDate: row.vch_date && typeof row.vch_date !== 'string' ? `${row.vch_date.getFullYear()}-${String(row.vch_date.getMonth() + 1).padStart(2, '0')}-${String(row.vch_date.getDate()).padStart(2, '0')}` : row.vch_date,
       partyName: row.party_name,
       totalAmount: row.total_amount,
       narration: row.narration,

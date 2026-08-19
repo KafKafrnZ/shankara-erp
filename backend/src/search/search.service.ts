@@ -99,10 +99,10 @@ export class SearchService {
     `;
     const hits = await this.dataSource.query(dataQuery, params);
 
-    // Format dates to YYYY-MM-DD
     hits.forEach((h: any) => {
       if (h.vchDate && typeof h.vchDate !== 'string') {
-        h.vchDate = h.vchDate.toISOString().split('T')[0];
+        const d = h.vchDate;
+        h.vchDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       }
     });
 
