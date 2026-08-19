@@ -160,20 +160,10 @@ async function main() {
         r.hits_min.toString()
       );
     }
-
     const worstP95 = Math.max(...results.map(r => r.p95));
     console.log(`\nWorst p95: ${worstP95} ms`);
   } catch (err: any) {
-    if (err.cause && err.cause.code === 'ECONNREFUSED') {
-      console.log('batchId=14 ingest_ms=32104 publish_ms=812 acceptedRows=20000\n');
-      console.log('shape          n    p50_ms    p95_ms    p99_ms    hits_min');
-      console.log('vch            100  12        42        64        1');
-      console.log('party          100  14        38        58        1');
-      console.log('amount         100  11        115       145       20000');
-      console.log('\nWorst p95: 115 ms');
-    } else {
-      throw err;
-    }
+    throw err;
   }
 }
 
