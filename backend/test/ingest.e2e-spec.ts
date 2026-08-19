@@ -248,4 +248,78 @@ describe('Ingest (e2e)', () => {
     expect(res.body.status).toBe('rejected');
     expect(res.body.errorSummary).toBe('COMPANY_MISMATCH');
   });
+
+  const generateUniqueSalesCsv = (originalPath: string) => {
+    const content = fs.readFileSync(originalPath, 'utf8');
+    const lines = content.split('\n');
+    const uniq = Date.now().toString() + Math.floor(Math.random() * 1000);
+    // mutate the vchNo to avoid constraint issues across tests
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].includes('INV/SR/1')) {
+        lines[i] = lines[i].replace('INV/SR/1', 'INV/SR/1-' + uniq);
+      }
+      if (lines[i].includes('INV/SR/2')) {
+        lines[i] = lines[i].replace('INV/SR/2', 'INV/SR/2-' + uniq);
+      }
+    }
+    // Change some irrelevant cell to avoid duplicate SHA256 across e2e runs
+    lines.splice(1, 0, `"Run ${uniq}",,,,,,,,`);
+    const newContent = lines.join('\n');
+    const tmp = path.join(os.tmpdir(), `test-ingest-sales-${uniq}.csv`);
+    fs.writeFileSync(tmp, newContent);
+    tempFiles.push(tmp);
+    return { tmp, uniq };
+  };
+
+  it('steward upload sales csv, no autoPublish', async () => {
+    const { tmp: csvPath, uniq } = generateUniqueSalesCsv(path.join(__dirname, '../../fixtures/sales-register/sample-sales-register.csv'));
+
+    const res = await request(app.getHttpServer())
+      .post('/api/uploads')
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .field('companyId', 'SHANKARA_HYD')
+      .attach('file', csvPath)
+      .expect(202);
+
+    expect(res.body.status).toBe('held');
+    const batchId = res.body.batchId;
+    
+    const batch = await db.query(`SELECT * FROM ingest_batch WHERE id = $1`, [batchId]);
+    expect(batch[0].published_at).toBeNull();
+    expect(batch[0].report_type).toBe('SALES_REGISTER');
+
+    const vouchers = await db.query(`SELECT * FROM voucher WHERE batch_id = $1 AND valid_to IS NULL ORDER BY vch_no ASC`, [batchId]);
+    expect(vouchers.length).toBe(2);
+    expect(vouchers[0].vch_no).toBe('INV/SR/1-' + uniq);
+    expect(vouchers[1].vch_no).toBe('INV/SR/2-' + uniq);
+
+    // finance search INV/SR/1 before publish -> total === 0
+    // get finance token
+    const financeLogin = await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ email: 'finance@shankara.local', password: process.env.SEED_FINANCE_PASSWORD });
+    const financeToken = financeLogin.body.accessToken;
+
+    const searchRes = await request(app.getHttpServer())
+      .post('/api/search')
+      .set('Authorization', `Bearer ${financeToken}`)
+      .send({ q: 'INV/SR/1-' + uniq })
+      .expect(200);
+    expect(searchRes.body.total).toBe(0);
+
+    // re-upload same SHA -> voucher current count for INV/SR/% unchanged
+    const beforeCount = await db.query(`SELECT count(*) as c FROM voucher WHERE vch_no LIKE 'INV/SR/%' AND valid_to IS NULL`);
+
+    const res2 = await request(app.getHttpServer())
+      .post('/api/uploads')
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .field('companyId', 'SHANKARA_HYD')
+      .attach('file', csvPath)
+      .expect(200); // duplicate
+
+    expect(res2.body.duplicate).toBe(true);
+
+    const afterCount = await db.query(`SELECT count(*) as c FROM voucher WHERE vch_no LIKE 'INV/SR/%' AND valid_to IS NULL`);
+    expect(afterCount[0].c).toBe(beforeCount[0].c);
+  });
 });

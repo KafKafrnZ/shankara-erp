@@ -118,15 +118,6 @@ export class IngestService {
         }, queryRunner.manager);
         await queryRunner.commitTransaction();
         return this.finishUpload(batch, sourceFile, userId, ip, userAgent);
-      } else if (parsedResult.detect.reportType === 'SALES_REGISTER') {
-        batch.status = 'rejected';
-        batch.errorSummary = 'SALES_REGISTER_NOT_IMPLEMENTED';
-        await queryRunner.manager.save(batch);
-        await this.auditService.log({
-          userId, action: 'upload', entityType: 'ingest_batch', entityId: batch.id, ip, userAgent, meta: { sha256: sourceFile.sha256, duplicate: false }
-        }, queryRunner.manager);
-        await queryRunner.commitTransaction();
-        return this.finishUpload(batch, sourceFile, userId, ip, userAgent);
       }
 
       const expectedCompany = (process.env.EXPECTED_TALLY_COMPANY_SUBSTR || 'shankara').toLowerCase();
