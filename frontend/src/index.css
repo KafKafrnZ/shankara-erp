@@ -135,3 +135,25 @@ tr.clickable:hover {
   float: right;
   cursor: pointer;
 }
+
+.dropzone {
+  border: 2px dashed #ccc;
+  border-radius: 6px;
+  padding: 1.5rem;
+  max-width: 480px;
+  text-align: center;
+}
+
+.dropzone.dragover {
+  border-color: #333;
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.dropzone input[type='file'] {
+  margin-top: 0.75rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .dropzone { border-color: #555; }
+  .dropzone.dragover { border-color: #ddd; background: rgba(255, 255, 255, 0.06); }
+}

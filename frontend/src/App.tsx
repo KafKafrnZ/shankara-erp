@@ -37,8 +37,14 @@ function App() {
     }
   };
 
-  const handleLogin = (u: User, token: string) => {
+  const handleLogin = async (token: string) => {
     sessionStorage.setItem('sb.accessToken', token);
+    const meRes = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } });
+    if (!meRes.ok) {
+      sessionStorage.removeItem('sb.accessToken');
+      return;
+    }
+    const u = await meRes.json();
     setUser(u);
     setPage('search');
     fetchAsOf(token);
@@ -93,7 +99,7 @@ function App() {
   );
 }
 
-function Login({ onLogin }: { onLogin: (u: User, t: string) => void }) {
+function Login({ onLogin }: { onLogin: (t: string) => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -108,7 +114,7 @@ function Login({ onLogin }: { onLogin: (u: User, t: string) => void }) {
     });
     if (res.ok) {
       const data = await res.json();
-      onLogin(data.user, data.accessToken);
+      await onLogin(data.accessToken);
     } else {
       const err = await res.json();
       setError(err.message || 'Login failed');
@@ -310,6 +316,18 @@ function Upload({ onPublish }: { onPublish: () => void }) {
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [batchInfo, setBatchInfo] = useState<any>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  const acceptFile = (f: File | undefined | null) => {
+    if (!f) return;
+    const lower = f.name.toLowerCase();
+    if (!lower.endsWith('.csv') && !lower.endsWith('.xls') && !lower.endsWith('.xlsx') && !lower.endsWith('.zip')) {
+      setError('Accept .xlsx, .xls, .csv, .zip only');
+      return;
+    }
+    setError('');
+    setFile(f);
+  };
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -367,8 +385,7 @@ function Upload({ onPublish }: { onPublish: () => void }) {
     });
     if (res.ok) {
       setStatus('published');
-      const data = await res.json();
-      setBatchInfo(data);
+      await fetchBatch(id);
       onPublish();
     } else {
       const err = await res.json();
@@ -387,7 +404,23 @@ function Upload({ onPublish }: { onPublish: () => void }) {
         </div>
         <div className="form-group">
           <label>File (.csv, .xls, .xlsx, .zip)</label>
-          <input type="file" onChange={e => setFile(e.target.files?.[0] || null)} required accept=".csv,.xls,.xlsx,.zip" />
+          <div
+            className={`dropzone${dragOver ? ' dragover' : ''}`}
+            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={e => {
+              e.preventDefault();
+              setDragOver(false);
+              acceptFile(e.dataTransfer.files[0]);
+            }}
+          >
+            <p>{file ? file.name : 'Drop a Day Book file here, or choose one'}</p>
+            <input
+              type="file"
+              accept=".csv,.xls,.xlsx,.zip"
+              onChange={e => acceptFile(e.target.files?.[0] || null)}
+            />
+          </div>
         </div>
         <button type="submit" disabled={status === 'uploading' || status === 'publishing'}>Upload</button>
       </form>

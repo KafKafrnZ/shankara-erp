@@ -3,7 +3,7 @@
 Follow these 10 steps to manually test the frontend integration.
 
 1. `docker compose up -d` + API on :3000 + `cd frontend && npm run dev` on :5173.
-2. Open `http://localhost:5173`. Title in the tab is `Shankara Buildpro - Data Layer`. You see login, not search.
+2. Open `http://localhost:5173`. Title in the tab is `Shankara Buildpro — Data Layer`. You see login, not search.
 3. Login `finance@shankara.local` / `finance` password. Land on search. Badge shows `finance`. **No Upload link.**
 4. As-of is either `No published data` or a real IST timestamp - not `17 Aug 2026`.
 5. Logout. Login `steward@shankara.local`. Badge shows `steward`. Upload link visible.
