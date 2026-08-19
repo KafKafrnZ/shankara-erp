@@ -222,42 +222,53 @@ export function parseDayBook(rows: string[][]): ParseResult {
   return { detect, vouchers, rejects };
 }
 
-export async function parseDayBookStream(stream: NodeJS.ReadableStream, ext: string): Promise<ParseResult> {
-  if (ext === '.xlsx' || ext === '.xls') {
-    const exceljs = require('exceljs');
-    const workbook = new exceljs.Workbook();
-    await workbook.xlsx.read(stream);
-    const worksheet = workbook.worksheets[0];
-    const rows: string[][] = [];
-    worksheet.eachRow((row: any, rowNumber: number) => {
-      const rowData: string[] = [];
-      row.eachCell({ includeEmpty: true }, (cell: any) => {
-        let val = cell.value;
-        if (val && typeof val === 'object' && val.result !== undefined) {
-          val = val.result; // Formula result
-        }
-        if (val instanceof Date) {
-          // Keep ISO or let it be parsed
-          val = val.toISOString().split('T')[0];
-        }
-        rowData.push(val === null || val === undefined ? '' : String(val));
-      });
-      rows.push(rowData);
-    });
-    return parseDayBook(rows);
-  } else {
-    // CSV
-    const rows: string[][] = [];
-    const rl = readline.createInterface({
-      input: stream,
-      crlfDelay: Infinity
-    });
+import { parseSalesRegister } from './sales-register.parser';
 
-    for await (const line of rl) {
-      rows.push(parseCsvLine(line));
+export async function parseDayBookStream(stream: NodeJS.ReadableStream, ext: string): Promise<ParseResult> {
+  const getRows = async () => {
+    if (ext === '.xlsx' || ext === '.xls') {
+      const exceljs = require('exceljs');
+      const workbook = new exceljs.Workbook();
+      await workbook.xlsx.read(stream);
+      const worksheet = workbook.worksheets[0];
+      const rows: string[][] = [];
+      worksheet.eachRow((row: any, rowNumber: number) => {
+        const rowData: string[] = [];
+        row.eachCell({ includeEmpty: true }, (cell: any) => {
+          let val = cell.value;
+          if (val && typeof val === 'object' && val.result !== undefined) {
+            val = val.result; // Formula result
+          }
+          if (val instanceof Date) {
+            // Keep ISO or let it be parsed
+            val = val.toISOString().split('T')[0];
+          }
+          rowData.push(val === null || val === undefined ? '' : String(val));
+        });
+        rows.push(rowData);
+      });
+      return rows;
+    } else {
+      // CSV
+      const rows: string[][] = [];
+      const rl = readline.createInterface({
+        input: stream,
+        crlfDelay: Infinity
+      });
+
+      for await (const line of rl) {
+        rows.push(parseCsvLine(line));
+      }
+      return rows;
     }
-    return parseDayBook(rows);
+  };
+
+  const rows = await getRows();
+  const detect = detectReport(rows);
+  if (detect.ok && detect.reportType === 'SALES_REGISTER') {
+    return parseSalesRegister(rows);
   }
+  return parseDayBook(rows);
 }
 
 export async function parseDayBookFile(filePath: string): Promise<ParseResult> {
