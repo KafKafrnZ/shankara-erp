@@ -351,8 +351,8 @@ function Upload({ onPublish }: { onPublish: () => void }) {
       const data = await res.json();
       
       if (res.status === 202 && data.status === 'held') {
-        setStatus('publishing');
-        await doPublish(data.batchId);
+        setStatus('');
+        await fetchBatch(data.batchId);
       } else if (res.status === 202 && data.status === 'rejected') {
         setStatus('rejected');
         setError(data.errorSummary || 'Rejected');
@@ -396,7 +396,7 @@ function Upload({ onPublish }: { onPublish: () => void }) {
 
   return (
     <div>
-      <h2>Upload Day Book</h2>
+      <h2>Upload</h2>
       <form onSubmit={handleUpload} style={{ marginBottom: '2rem' }}>
         <div className="form-group">
           <label>Company ID</label>
@@ -414,7 +414,7 @@ function Upload({ onPublish }: { onPublish: () => void }) {
               acceptFile(e.dataTransfer.files[0]);
             }}
           >
-            <p>{file ? file.name : 'Drop a Day Book file here, or choose one'}</p>
+            <p>{file ? file.name : 'Drop a file here, or choose one'}</p>
             <input
               type="file"
               accept=".csv,.xls,.xlsx,.zip"
