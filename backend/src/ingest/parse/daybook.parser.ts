@@ -1,4 +1,4 @@
-import { detectDayBook } from '../detect/daybook.detector';
+import { detectReport } from '../detect/report.detector';
 import { ParseResult, ParsedVoucher, ParseReject, ParsedLine } from './types';
 import { parseIndianAmount } from './amount';
 import { parseAmountToCents, formatCents } from './money';
@@ -27,8 +27,11 @@ function parseCsvLine(line: string): string[] {
 }
 
 export function parseDayBook(rows: string[][]): ParseResult {
-  const detect = detectDayBook(rows);
+  const detect = detectReport(rows);
   if (!detect.ok) {
+    return { detect, vouchers: [], rejects: [] };
+  }
+  if (detect.reportType === 'SALES_REGISTER') {
     return { detect, vouchers: [], rejects: [] };
   }
 

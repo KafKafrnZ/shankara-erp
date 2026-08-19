@@ -102,7 +102,7 @@ export class IngestService {
         sourceFileId: sourceFile.id, fileSha256: sha256,
         tallyCompany: (parsedResult.detect as any).titleCompany || 'unknown',
         companyId: dto.companyId, branchId: dto.branchId,
-        reportType: 'DAY_BOOK',
+        reportType: parsedResult.detect.ok && (parsedResult.detect as any).reportType === 'SALES_REGISTER' ? 'SALES_REGISTER' : 'DAY_BOOK',
         periodFrom: (parsedResult.detect as any).periodFrom ? new Date((parsedResult.detect as any).periodFrom) : null,
         periodTo: (parsedResult.detect as any).periodTo ? new Date((parsedResult.detect as any).periodTo) : null,
         status: 'held', uploadedBy: userId,
@@ -112,6 +112,15 @@ export class IngestService {
       if (!parsedResult.detect.ok) {
         batch.status = 'rejected';
         batch.errorSummary = 'UNRECOGNIZED_LAYOUT';
+        await queryRunner.manager.save(batch);
+        await this.auditService.log({
+          userId, action: 'upload', entityType: 'ingest_batch', entityId: batch.id, ip, userAgent, meta: { sha256: sourceFile.sha256, duplicate: false }
+        }, queryRunner.manager);
+        await queryRunner.commitTransaction();
+        return this.finishUpload(batch, sourceFile, userId, ip, userAgent);
+      } else if (parsedResult.detect.reportType === 'SALES_REGISTER') {
+        batch.status = 'rejected';
+        batch.errorSummary = 'SALES_REGISTER_NOT_IMPLEMENTED';
         await queryRunner.manager.save(batch);
         await this.auditService.log({
           userId, action: 'upload', entityType: 'ingest_batch', entityId: batch.id, ip, userAgent, meta: { sha256: sourceFile.sha256, duplicate: false }

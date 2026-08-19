@@ -1,7 +1,7 @@
 export type DetectResult =
   | {
       ok: true;
-      reportType: 'DAY_BOOK';
+      reportType: 'DAY_BOOK' | 'SALES_REGISTER';
       titleCompany: string | null;
       periodFrom: string | null; // YYYY-MM-DD
       periodTo: string | null;
