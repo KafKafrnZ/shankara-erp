@@ -3,6 +3,7 @@
 **Product:** Tally Data Access Layer (read-only ingest / search / retrieve)  
 **Repo:** https://github.com/KafKafrnZ/shankara-erp  
 **Status:** `PHASE_1_STATUS=COMPLETE` (see `PHASE_1_EVIDENCE.md`)  
+**Post-audit fixes:** `PHASE_1_UPDATES.md` (replaces `AUDIT_FIX_BRIEF.md`)  
 **Host of record:** Windows, 11th Gen Intel Core i3-1115G4 @ 3.00 GHz  
 **Date closed:** 2026-08-19
 

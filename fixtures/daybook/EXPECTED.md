@@ -72,3 +72,14 @@ Excel serial `45383` → date `2024-04-01` (Excel epoch 1899-12-30). One Contra 
 ## `tiny.csv`
 
 Upload-only fixture from S3. **Not** a Day Book. Detect must fail `UNRECOGNIZED_LAYOUT`.
+
+## `voucher-all-lines-invalid.csv`
+
+| Field | Value |
+|---|---|
+| vouchers accepted after validate | **0** |
+| reject codes | `BOTH_SIDES` (the only line) **and** `VOUCHER_HAS_NO_VALID_LINES` (the voucher) |
+| vch_no that must not persist | `BOTH/1` |
+
+A voucher whose only line has both debit and credit must not vanish without a reject row.
+

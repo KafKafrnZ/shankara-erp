@@ -17,6 +17,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { parseDayBookStream } from './parse/daybook.parser';
 import { validateDayBook } from './validate/daybook.validator';
+import { formatCents } from './parse/money';
 
 @Injectable()
 export class IngestService {
@@ -96,6 +97,7 @@ export class IngestService {
       });
       await queryRunner.manager.save(sourceFile);
 
+      // Steward is a global role (seed company_id is null) and may set any companyId.
       const batch = this.ingestBatchRepo.create({
         sourceFileId: sourceFile.id, fileSha256: sha256,
         tallyCompany: (parsedResult.detect as any).titleCompany || 'unknown',
@@ -225,7 +227,7 @@ export class IngestService {
           await queryRunner.manager.query(
             `INSERT INTO master_ledger (company_id, ledger_name, is_party, extra)
              VALUES ($1, $2, false, '{}')
-             ON CONFLICT (company_id, ledger_name) DO UPDATE SET extra = master_ledger.extra`,
+             ON CONFLICT (company_id, ledger_name) DO NOTHING`,
             [dto.companyId, ledgerName]
           );
         }
@@ -234,13 +236,6 @@ export class IngestService {
       batch.totalRows = totalLines;
       batch.acceptedRows = validated.vouchers.length;
       batch.rejectedRows = validated.rejects.length;
-
-      const formatCents = (cents: bigint) => {
-        const sign = cents < 0n ? '-' : '';
-        const abs = cents < 0n ? -cents : cents;
-        const s = abs.toString().padStart(3, '0');
-        return sign + s.slice(0, -2) + '.' + s.slice(-2);
-      };
 
       batch.debitSum = dSumCents > 0n ? formatCents(dSumCents) : '0.00';
       batch.creditSum = cSumCents > 0n ? formatCents(cSumCents) : '0.00';

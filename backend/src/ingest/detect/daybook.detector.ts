@@ -40,12 +40,8 @@ export function detectDayBook(rows: string[][]): DetectResult {
 
     if (!titleCompany && !rowText.includes('day book') && periodFrom === null) {
       const candidate = row.find(c => c && c.trim().length > 0);
-      if (candidate) {
-        // Wait, the period might be detected in this row above.
-        // Let's make sure it doesn't contain " to " if periodFrom wasn't parsed yet.
-        if (!candidate.toLowerCase().includes(' to ')) {
-          titleCompany = candidate.trim();
-        }
+      if (candidate && !candidate.toLowerCase().includes(' to ')) {
+        titleCompany = candidate.trim();
       }
     }
 
@@ -59,10 +55,6 @@ export function detectDayBook(rows: string[][]): DetectResult {
     const hasCredit = normalizedRow.includes('credit');
 
     if (hasDate && hasParticulars && hasVchType && hasVchNo && hasDebit && hasCredit) {
-      // If we find multiple headers, S4 requires us to pick the one that contains 'Vch No'/'Debit'. 
-      // Since we just checked that, we take the first matching one or replace if needed?
-      // "If two header-like rows, use the one that contains Vch No / Debit."
-      // Since this check enforces both, the first one that matches all is the header.
       if (headerRowIndex === -1) {
         headerRowIndex = i;
         for (let j = 0; j < normalizedRow.length; j++) {

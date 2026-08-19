@@ -14,7 +14,7 @@ export class VouchersService {
       SELECT v.*, b.status as batch_status, b.published_at as published_at, b.source_file_id as source_file_id
       FROM voucher v
       JOIN ingest_batch b ON v.batch_id = b.id
-      WHERE v.id = $1
+      WHERE v.id = $1 AND v.is_deleted = false
     `;
     const params = [id];
 

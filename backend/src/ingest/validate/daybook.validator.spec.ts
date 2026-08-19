@@ -1,5 +1,7 @@
 import { validateDayBook } from './daybook.validator';
+import { parseDayBookFile } from '../parse/daybook.parser';
 import { ParseResult, ParsedVoucher } from '../parse/types';
+import * as path from 'path';
 
 describe('DayBook Validator', () => {
   const createMockVoucher = (lines: any[]): ParsedVoucher => ({
@@ -48,6 +50,31 @@ describe('DayBook Validator', () => {
 
     const res = validateDayBook(parsed);
     expect(res.vouchers.length).toBe(0);
+    expect(res.rejects.length).toBe(2);
+    expect(res.rejects[0].code).toBe('BOTH_SIDES');
+    expect(res.rejects.some(r => r.code === 'VOUCHER_HAS_NO_VALID_LINES')).toBe(true);
+  });
+
+  it('records a reject when a voucher has zero lines', () => {
+    const parsed: ParseResult = {
+      detect: { ok: true, reportType: 'DAY_BOOK', titleCompany: 'A', periodFrom: null, periodTo: null, headerRowIndex: 1, columns: {} },
+      vouchers: [createMockVoucher([])],
+      rejects: [],
+    };
+    const res = validateDayBook(parsed);
+    expect(res.vouchers.length).toBe(0);
     expect(res.rejects.length).toBe(1);
+    expect(res.rejects[0].code).toBe('VOUCHER_HAS_NO_VALID_LINES');
+  });
+
+  it('fixture BOTH/1 is rejected at voucher level, not silently dropped', async () => {
+    const parsed = await parseDayBookFile(
+      path.resolve(__dirname, '../../../../fixtures/daybook/voucher-all-lines-invalid.csv'),
+    );
+    const res = validateDayBook(parsed);
+    expect(res.vouchers.length).toBe(0);
+    expect(res.rejects.some(r => r.code === 'BOTH_SIDES')).toBe(true);
+    expect(res.rejects.some(r => r.code === 'VOUCHER_HAS_NO_VALID_LINES')).toBe(true);
+    expect(res.rejects.some(r => r.message.includes('BOTH/1'))).toBe(true);
   });
 });

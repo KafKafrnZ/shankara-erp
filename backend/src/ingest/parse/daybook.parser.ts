@@ -1,6 +1,7 @@
 import { detectDayBook } from '../detect/daybook.detector';
 import { ParseResult, ParsedVoucher, ParseReject, ParsedLine } from './types';
 import { parseIndianAmount } from './amount';
+import { parseAmountToCents, formatCents } from './money';
 import { parseTallyDate } from './date';
 import { normalizeVchNo } from './vch-no';
 import * as fs from 'fs';
@@ -83,9 +84,7 @@ export function parseDayBook(rows: string[][]): ParseResult {
     const isNewVoucher = rawVchNo.trim() !== '' || (rawDate.trim() !== '' && currentVoucher !== null);
 
     if (isNewVoucher) {
-      // Must have date, vchType, vchNo to start a valid voucher. But wait, if vchNo is empty and date is there,
-      // it is a new voucher if currentVoucher is not null. BUT the rule says:
-      // "Header row of a voucher: date, vchType, vchNo required. Missing any of those on a row that looks like a new voucher -> reject that row"
+      // New voucher header requires date, vchType, vchNo. Missing any → reject the row.
       const date = parseTallyDate(rawDate);
       if (!date) {
         rejects.push({ sourceRowNo: i + 1, code: 'MISSING_VCH_DATE', message: 'Missing date', raw: {} });
@@ -197,27 +196,20 @@ export function parseDayBook(rows: string[][]): ParseResult {
     }
   }
 
-  // Calculate total amounts and fix receipt partyName
   for (const v of vouchers) {
-    let sumD = 0;
-    let sumC = 0;
+    let sumD = 0n;
+    let sumC = 0n;
     for (const l of v.lines) {
-      sumD += parseFloat(l.debit);
-      sumC += parseFloat(l.credit);
+      sumD += parseAmountToCents(l.debit) ?? 0n;
+      sumC += parseAmountToCents(l.credit) ?? 0n;
     }
-    const maxAmount = Math.max(sumD, sumC);
-    
-    // Fallback if 0
-    if (maxAmount === 0 && v.lines.length > 0) {
-      // should not happen if lines have amounts
-    } else {
-      v.totalAmount = maxAmount.toFixed(2);
+    const maxCents = sumD > sumC ? sumD : sumC;
+    if (maxCents !== 0n || v.lines.length === 0) {
+      v.totalAmount = formatCents(maxCents);
     }
 
     if (v.vchType.toLowerCase() === 'receipt' && v.lines.length > 0) {
-      // Required: party_name is Cash (first particulars on the header row)
-      // We already set partyName = rawPart from header row. We keep it as is.
-      // Wait, rule: "party_name is Cash (first particulars on the header row)"
+      // Receipt party_name is first particulars on the header row (Cash).
       if (v.partyName && v.lines[0]) {
         v.partyName = v.lines[0].ledgerName;
       }

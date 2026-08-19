@@ -55,14 +55,13 @@ export class SearchService {
         paramIdx++;
       }
 
-      if (signals.length === 0 || true) { // "otherwise" or combine? The brief says "OR the signals that apply"
-        signals.push(`voucher.party_name ILIKE $${paramIdx}`);
-        signals.push(`voucher.narration ILIKE $${paramIdx}`);
-        signals.push(`voucher.vch_no ILIKE $${paramIdx}`);
-        params.push(`%${dto.q}%`);
-        rankSql += `(voucher.party_name ILIKE $${paramIdx}) DESC, `;
-        paramIdx++;
-      }
+      // Always OR ILIKE so a q with digits (e.g. "Synth Party 10000") still hits party/narration.
+      signals.push(`voucher.party_name ILIKE $${paramIdx}`);
+      signals.push(`voucher.narration ILIKE $${paramIdx}`);
+      signals.push(`voucher.vch_no ILIKE $${paramIdx}`);
+      params.push(`%${dto.q}%`);
+      rankSql += `(voucher.party_name ILIKE $${paramIdx}) DESC, `;
+      paramIdx++;
 
       if (signals.length > 0) {
         whereSql += ` AND (${signals.join(' OR ')})`;
@@ -82,6 +81,9 @@ export class SearchService {
 
     const limit = dto.limit ?? 20;
     const offset = dto.offset ?? 0;
+    const limitIdx = paramIdx++;
+    const offsetIdx = paramIdx++;
+    params.push(limit, offset);
 
     const dataQuery = `
       SELECT 
@@ -93,7 +95,7 @@ export class SearchService {
       JOIN ingest_batch ON voucher.batch_id = ingest_batch.id
       WHERE ${whereSql}
       ORDER BY ${rankSql}
-      LIMIT ${limit} OFFSET ${offset}
+      LIMIT $${limitIdx} OFFSET $${offsetIdx}
     `;
     const hits = await this.dataSource.query(dataQuery, params);
 
