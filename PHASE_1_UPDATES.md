@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-19  
 **Repo HEAD after this commit is the source of truth.**  
-**Phase 1 is complete.** Product Phase 2 has **not** started.
+**Phase 1 is complete.** Product Phase 2 has started as **S11 only** (detect router). Do not implement S12–S16 until S11 is independently accepted.
 
 This file replaces `AUDIT_FIX_BRIEF.md`. That brief was a genuine post-Phase-1 code review. The items below were either **fixed in this pass** or **left open on purpose**. Do not re-implement S0–S10. Do not treat old `S*_BRIEF.md` “S10 is forbidden” / “do not start Phase 2” lines as current work orders — those steps are **closed history**.
 
@@ -22,7 +22,7 @@ You are not starting Phase 1. You are not writing another S-brief.
   3. `GET /api/health` `asOf` is always `null`. Real as-of is `GET /api/meta/as-of`.
   4. Search still **ORs** `ILIKE '%q%'` on every query so party names with digits match. Amount search for `1000` still counts all SYN9 rows. Fine at 20k.
   5. E2e clones inflate `Sri Steel` / `1248500` hit totals. Do **not** `TRUNCATE voucher`.
-- If you are asked to start Phase 2, write a **new** brief. Do not reopen S9/S10. Do not add OpenSearch.
+- Phase 2 briefs exist: `PHASE_2_AUDIT.md`, `S11_BRIEF.md`–`S16_BRIEF.md`. **Current work is S11 only.** Do not implement S12–S16, Purchase, OpenSearch, or mapping UI. Do not reopen S9/S10.
 
 ---
 

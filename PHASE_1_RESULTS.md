@@ -283,7 +283,7 @@ Then walk `frontend/PHASE1_MANUAL.md`. Health must be through **6432**. Optional
 
 Phase 2 is **more Tally report types** on the same ingest/search/retrieve product. It is not a rewrite, not OpenSearch, not AG Grid, not voucher posting, and not “Phase 1 was just the foundation.”
 
-Do not open a Phase 2 file until a human asks for `S11` / Phase 2 brief.
+Phase 2 briefs are in `PHASE_2_AUDIT.md` and `S11_BRIEF.md`–`S16_BRIEF.md`. Implement **S11 only** until it is independently accepted.
 
 ---
 
