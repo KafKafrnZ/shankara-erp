@@ -2,14 +2,14 @@
 
 **Read this first if you are Claude, Gemini, or any other agent.**  
 **Repo:** https://github.com/KafKafrnZ/shankara-erp  
-**Date:** 2026-08-19  
+**Date:** 2026-08-20  
 **Host of record (benchmarks):** Windows, 11th Gen Intel Core i3-1115G4 @ 3.00 GHz
 
 | Phase | Status | Evidence |
 |---|---|---|
 | **1** Day Book ingest / search / retrieve | **COMPLETE** | `PHASE_1_EVIDENCE.md` → `PHASE_1_STATUS=COMPLETE` |
 | **2** Sales Register on the same path | **COMPLETE** | `PHASE_2_EVIDENCE.md` → `PHASE_2_STATUS=COMPLETE` |
-| **3** Search-engine quality | **NOT STARTED** | No S17 brief yet. Do not implement. |
+| **3** Search-engine quality | **S21 done, S22 evidence filled** | Waiting human audit of UI highlight + COMPLETE stamp. |
 
 **Pre–Phase 3 stress (2026-08-20):** mixed synthetic Day Book **N=10000** (`STRS`/`STRP`/…), parse 10k/34k lines 0 rejects, HTTP ingest ~72 s, search worst p95 **122 ms**. Details: `STRESS_DAYBOOK.md`. Does **not** replace official S9 p95 **135 ms**.
 
@@ -22,10 +22,10 @@ Independent human review accepted every S-step against live Docker + `http://127
 You are **not** starting Phase 1 or Phase 2. Those are closed.
 
 - **Do not** reopen S0–S16. **Do not** rewrite Day Book parse rules. **Do not** restore `parseFloat` on money. **Do not** `TRUNCATE voucher`. **Do not** drop SYN9 (20k) rows.
-- **Do not** add OpenSearch client code, AG Grid, mapping UI, Purchase Register, Stock, Trial Balance, GST filing, or “Create Voucher” until a **new** `S17_BRIEF.md` (or later) is written by the human and says you may.
+- **Do not** add OpenSearch client code, AG Grid, mapping UI, Purchase Register, Stock, Trial Balance, GST filing, or “Create Voucher”. `S17_BRIEF.md` is issued and **explicitly forbids** an OS client. S18–S22 briefs do not exist.
 - Old `S3_BRIEF.md`–`S10_BRIEF.md` still say “Phase 2 is forbidden.” That lock is **expired**. They are history. Current product law is this file + `PHASE_1_AUDIT.md` §1 + `PHASE_2_AUDIT.md` §0.2.
 - Official search p95 is **135 ms** (Phase 1, 20k SYN9, worst of three shapes). Do not invent a new p95. Do not re-run `s9-bench.ts` unless the human asks.
-- If asked to implement Phase 3, **stop and wait for S17_BRIEF.md**. This file only describes intended scope so you do not guess.
+- S17 and S18 are **done**. S19 candidate+SQL path is in code (human fixed OS-id `IN` bind). `S20_BRIEF.md` is issued: fuzz **only** for `shankra` via `company_name`. Do not revert IN-list or exact `vch_no_norm` bind.
 
 ---
 
@@ -70,7 +70,7 @@ If both title strings appear, **Day Book wins**.
 
 **Persistence:** one `voucher` + `voucher_line` model for both reports. `ingest_batch.report_type` is `DAY_BOOK` or `SALES_REGISTER`. Unique `(company_id, vch_type, vch_no, vch_date, valid_to) NULLS NOT DISTINCT`. SHA-256 duplicate → HTTP `duplicate`. Content change → version (`valid_to`).
 
-**Search:** parameterized SQL only. `ILIKE` is always OR-ed so party names with digits still match. `LIMIT`/`OFFSET` are bound parameters.
+**Search:** parameterized SQL only. `ILIKE` is always OR-ed so party names with digits still match. `LIMIT`/`OFFSET` are bound parameters. Exact `vch_no_norm` rank uses a **separate** bind from the `LIKE` prefix (human S17 fix: equality must not reuse `'invsr1%'`).
 
 ---
 
@@ -155,16 +155,17 @@ No Phase 2 20k sales bench was required or run. Do not invent one.
 ## 6. Still open (do not “fix” unless a human asks)
 
 1. **No real Tally export** from a live Shankara company has been parsed. Fixtures are hand-built / synthetic.
-2. Health `GET /api/health` `asOf` is always `null`. Real as-of is `GET /api/meta/as-of`.
-3. Search always ORs `ILIKE '%q%'`. Fine at current size; expensive for amount-shaped `q` on huge tables.
-4. E2e clones inflate `Sri Steel` / `INV/SR/%` hit totals. Do **not** `TRUNCATE`.
-5. Compose still runs OpenSearch. **Unused** through Phase 2.
+2. E2e clones inflate `Sri Steel` / `INV/SR/%` hit totals. Do **not** `TRUNCATE`.
+3. Fresh-clone CI (`down -v` + migrate + seed + tests) is not automated. Do not `down -v` on this volume (drops SYN9).
+4. Backup: `pg_dump` the DB; copy `backend/var/uploads/{aa}/{bb}/{sha256}`. Restore = `psql` + copy object tree. No off-host replica.
+
+**Closed this pass:** health `asOf` from `MAX(published_at)`; login 10/min throttle; `helmet`; CORS includes `127.0.0.1:5173`; dead `autoPublish` removed; integer paise for debit/credit tolerance; sales fixture line-value asserts.
 
 ---
 
-## 7. Phase 3 — scope and architecture (not started)
+## 7. Phase 3 — scope and architecture (S17 complete)
 
-The 2026-08-17 architecture essay called Phase 3 “search-engine quality” (OpenSearch, typeahead, fuzz, facets, dossiers). **This program will do a thinner, sequential Phase 3.** Briefs (S17+) are **not written yet**. Do not code from this section.
+The 2026-08-17 architecture essay called Phase 3 “search-engine quality” (OpenSearch, typeahead, fuzz, facets, dossiers). **This program will do a thinner, sequential Phase 3.** S17 and S18 are complete. `S19_BRIEF.md` is issued. S20–S22 are **not** written. Do not add fuzz or UI from this section.
 
 ### 7.1 Goal
 
@@ -174,7 +175,7 @@ Postgres remains the **retrieve source of truth**. If a search index is added, i
 
 ### 7.2 In scope (intended)
 
-1. **Gold set (mandatory before any cluster):** 10 frozen queries with expected `vch_no` in hit 1–3 (mix of Day Book + Sales Register). Plus a small typo set (`shankra`, `inv sr 1`, `apex pipe`). Written to `fixtures/search/GOLD.md`. Measured on SQL **first**.
+1. **Gold set (mandatory before any cluster):** frozen in `fixtures/search/GOLD.md` (G1–G10 + typo T1–T3 + amount A1–A2 + visibility N1–N4). S17 measures SQL **first**. Do not edit expected columns without a human.
 2. **OpenSearch as index, not source of truth:** index only `valid_to IS NULL AND is_deleted = false` rows from **published** batches. Fields: `company_id`, `vch_no`, `vch_no_norm`, `party_name`, `total_amount`, `narration`, `vch_date`, `vch_type`, `batch_id`. Sync on publish and on hold/unpublish (delete or mark unpublished).
 3. **`POST /api/search`:** may query the index for candidate ids, then **load lines and lineage from Postgres**. If OpenSearch is down, **SQL fallback** (today’s path). Never return a hit that SQL visibility would hide.
 4. **Typeahead / light fuzz** on party and vch_no only. No “Google” marketing. No item/HSN dossier.
@@ -205,20 +206,46 @@ POST /search ──► visibility SQL (RBAC, published, current)
 GET /vouchers/:id ──► Postgres only
 ```
 
-Compose already has `shankara-opensearch`. Phase 3 may **wire** it. Until S17 exists, `backend/src` must stay free of an OpenSearch client.
+Compose already has `shankara-opensearch`. S18 wired the indexer. S19 may query it for **ids only**; retrieve stays Postgres.
 
 ### 7.5 Suggested step order (names only; no work)
 
-| Step | Intent |
-|---|---|
-| S17 | Gold set + SQL baseline measurements (no OS client) |
-| S18 | Indexer: published current vouchers → OS; hold removes them |
-| S19 | Search uses OS candidates + SQL visibility; SQL fallback |
-| S20 | Typo/fuzz on party + vch_no; gold + typo sets pass |
-| S21 | UI: still one box; optional highlight |
-| S22 | `PHASE_3_EVIDENCE.md` live gates |
+| Step | Intent | Brief |
+|---|---|---|
+| S17 | Gold set + SQL baseline measurements (no OS client) | **COMPLETE** (`S17_EVIDENCE.md`) |
+| S18 | Indexer: published current vouchers → OS; hold removes them | **COMPLETE** (`S18_EVIDENCE.md`) |
+| S19 | Search uses OS candidates + SQL visibility; SQL fallback | **issued** (`S19_BRIEF.md`) |
+| S20 | Typo/fuzz on party + company_name (`shankra`); T2/T3 already hit | **COMPLETE** (`S20_EVIDENCE.md`) |
+| S21 | UI: still one box; optional highlight | **done** (`S21_BRIEF.md` / `S21_EVIDENCE.md`) |
+| S22 | `PHASE_3_EVIDENCE.md` live gates | **filled, COMPLETE not stamped** |
 
-**Do not implement S17–S22 until the human issues `S17_BRIEF.md`.**
+**S21 implemented. `PHASE_3_EVIDENCE.md` filled. Do not write `PHASE_3_STATUS=COMPLETE` until a human checks highlight on :5173.**
+
+S18 live (independent, after continuation): SQL published current = OS `_count` = **30431**. `INV/SR/1` in OS `_id=20745`. HOLD17/1 absent. OTHER/1 present. Search still SQL. G7 hit 1 = `INV/SR/1`. Reindex no longer `indices.delete`s first.
+
+S17 SQL baseline (finance, gold captured **before** e2e; clone totals move after e2e — ranking does not):
+
+```
+G1  11820                 hit2 INV/HYD/24-25/11820   pass
+G2  INV/HYD/24-25/11820   hit1 same                  pass
+G3  RCT/HYD/2401          hit1                       pass
+G4  KA01AB1234            top narration has plate    pass (clones; not the fixture vch)
+G5  STRS/5000             hit1                       pass
+G6  Mix Party 5000        STRS/5000                  pass
+G7  INV/SR/1              hit1 exact INV/SR/1        pass (needs exact vch_no_norm bind)
+G8  INV/SR/2              hit1 exact INV/SR/2        pass
+G9  Apex Pipes            top party Apex Pipes       pass
+G10 SYN9/10000            hit1                       pass
+T1  shankra               total=0                    SQL miss (S20 candidate)
+T2  inv sr 1              hit1 INV/SR/1              already hits via normalizeVchNo
+T3  apex pipe             Apex Pipes                 already hits via ILIKE substring
+N1  HOLD17/1 finance      total=0                    pass
+N2  OTHER/1 branch        total=0                    pass
+N3  OTHER/1 steward       total=1                    pass
+N4  11820 no token        401                        pass
+```
+
+Official p95 is still **135 ms**. S17 `sql_baseline_ms` is one-shot, not a p95.
 
 ---
 
@@ -230,9 +257,15 @@ Compose already has `shankara-opensearch`. Phase 3 may **wire** it. Until S17 ex
 | `PHASE_1_AUDIT.md` / `PHASE_1_EVIDENCE.md` / `PHASE_1_RESULTS.md` | Phase 1 spec, gates, narrative |
 | `PHASE_1_UPDATES.md` | Post-audit money + drop-reject |
 | `PHASE_2_AUDIT.md` / `PHASE_2_EVIDENCE.md` | Phase 2 spec and gates |
+| `PHASE_3_AUDIT.md` | Phase 3 spec (thin). S18–S22 still locked. |
+| `S17_BRIEF.md` / `S17_EVIDENCE.md` | S17 closed (gold + SQL baseline) |
+| `S18_BRIEF.md` / `S18_EVIDENCE.md` | S18 closed (indexer only) |
+| `S19_BRIEF.md` | S19 work order (OS ids + SQL; IN-list human-fixed) |
+| `S20_BRIEF.md` | **Current work order** (`company_name` fuzz / T1) |
 | `S3_BRIEF.md`–`S16_BRIEF.md` + `S*_EVIDENCE.md` | Closed work orders |
 | `fixtures/daybook/EXPECTED.md` | Day Book contract |
 | `fixtures/sales-register/EXPECTED.md` | Sales Register contract |
+| `fixtures/search/GOLD.md` | Frozen search gold / typo / visibility set |
 
 ---
 
@@ -242,7 +275,7 @@ Compose already has `shankara-opensearch`. Phase 3 may **wire** it. Until S17 ex
 |---|---|
 | Phase 1 | COMPLETE |
 | Phase 2 | COMPLETE |
-| Phase 3 | not started |
+| Phase 3 | S17–S21 done; S22 evidence filled; COMPLETE stamp pending human |
 | SYN9 current vouchers | **20000** |
 | Search worst p95 | **135 ms** (party), 100 calls, i3-1115G4 |
 | p50 vch / party / amount | 80 / 83 / 95 ms |

@@ -8,7 +8,4 @@ export class UploadDto {
   @IsString()
   @IsOptional()
   branchId?: string;
-
-  @IsOptional()
-  autoPublish?: string | boolean;
 }

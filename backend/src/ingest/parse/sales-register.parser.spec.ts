@@ -7,7 +7,7 @@ function parseCsvBasic(text: string): string[][] {
   const lines = text.split('\n');
   for (const line of lines) {
     if (!line.trim()) continue;
-    const cols = [];
+    const cols: string[] = [];
     let cur = '';
     let inQuotes = false;
     for (let i = 0; i < line.length; i++) {
@@ -55,6 +55,19 @@ describe('Sales Register Parser', () => {
     expect(v2!.partyName).toBe(getExpected('`INV/SR/2` party'));
     expect(v2!.totalAmount).toBe(getExpected('`INV/SR/2` total'));
     expect(v2!.lines.length).toBe(parseInt(getExpected('`INV/SR/2` lines')!.charAt(0)));
+    expect(v2!.lines.map(l => ({ ledger: l.ledgerName, debit: l.debit, credit: l.credit }))).toEqual([
+      { ledger: 'Apex Pipes', debit: '59000.00', credit: '0.00' },
+      { ledger: 'Sales', debit: '0.00', credit: '50000.00' },
+      { ledger: 'CGST', debit: '0.00', credit: '4500.00' },
+      { ledger: 'SGST', debit: '0.00', credit: '4500.00' },
+    ]);
+
+    expect(v1!.lines.map(l => ({ ledger: l.ledgerName, debit: l.debit, credit: l.credit }))).toEqual([
+      { ledger: 'Sri Steel Traders', debit: '1248500.00', credit: '0.00' },
+      { ledger: 'Sales', debit: '0.00', credit: '1023770.00' },
+      { ledger: 'CGST', debit: '0.00', credit: '112365.00' },
+      { ledger: 'SGST', debit: '0.00', credit: '112365.00' },
+    ]);
   });
 
   it('rejects unparseable invoice amount', () => {

@@ -140,6 +140,22 @@ function Login({ onLogin }: { onLogin: (t: string) => void }) {
   );
 }
 
+function highlightText(text: string | null | undefined, q: string) {
+  if (text == null || text === '') return text ?? '';
+  const needle = q.trim();
+  if (!needle) return text;
+  const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const parts = String(text).split(new RegExp(`(${escaped})`, 'ig'));
+  const lower = needle.toLowerCase();
+  return parts.map((part, i) =>
+    part.toLowerCase() === lower ? (
+      <mark className="search-hl" key={i}>{part}</mark>
+    ) : (
+      part
+    ),
+  );
+}
+
 function Search() {
   const [q, setQ] = useState('');
   const [hits, setHits] = useState<any[]>([]);
@@ -188,12 +204,13 @@ function Search() {
   return (
     <div>
       <form onSubmit={doSearch} style={{ marginBottom: '2rem' }}>
-        <input 
+        <input
           ref={inputRef}
-          value={q} 
-          onChange={e => setQ(e.target.value)} 
-          placeholder="Search..." 
-          style={{ width: '400px', padding: '0.5rem' }} 
+          value={q}
+          onChange={e => setQ(e.target.value)}
+          placeholder="Search vouchers…"
+          aria-label="Search vouchers"
+          style={{ width: '400px', padding: '0.5rem' }}
         />
         <button type="submit" style={{ marginLeft: '1rem', padding: '0.5rem 1rem' }}>Search</button>
       </form>
@@ -219,11 +236,11 @@ function Search() {
                 onKeyDown={e => handleRowKeyDown(e, h.id)}
                 tabIndex={0}
               >
-                <td>{h.vchNo}</td>
+                <td>{highlightText(h.vchNo, q)}</td>
                 <td>{h.vchType}</td>
                 <td>{h.vchDate}</td>
-                <td>{h.partyName}</td>
-                <td>{h.totalAmount}</td>
+                <td>{highlightText(h.partyName, q)}</td>
+                <td>{highlightText(String(h.totalAmount ?? ''), q)}</td>
               </tr>
             ))}
           </tbody>

@@ -7,7 +7,7 @@ function parseCsvBasic(text: string): string[][] {
   const lines = text.split('\n');
   for (const line of lines) {
     if (!line.trim()) continue;
-    const cols = [];
+    const cols: string[] = [];
     let cur = '';
     let inQuotes = false;
     for (let i = 0; i < line.length; i++) {

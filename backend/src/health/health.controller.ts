@@ -12,10 +12,14 @@ export class HealthController {
   async checkHealth() {
     try {
       await this.dataSource.query('SELECT 1');
+      const asOfRes = await this.dataSource.query(
+        `SELECT MAX(published_at) as "asOf" FROM ingest_batch WHERE status = 'published'`,
+      );
+      const asOf = asOfRes[0]?.asOf ? new Date(asOfRes[0].asOf).toISOString() : null;
       return {
         status: 'ok',
         db: 'ok',
-        asOf: null,
+        asOf,
       };
     } catch (error) {
       throw new InternalServerErrorException({

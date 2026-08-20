@@ -1,6 +1,6 @@
 # Phase 2 — post-audit note (single P0)
 
-**Start here:** `PHASE_STATUS.md` (Phase 1 + 2 results, official p95, Phase 3 scope).
+**Start here:** `PHASE_STATUS.md` (Phase 1 + 2 results, official p95, Phase 3 S17).
 **Date:** 2026-08-20
 **Phase 1 and Phase 2 remain complete once this migration lands.** Do not reopen S0–S16 beyond this file.
 

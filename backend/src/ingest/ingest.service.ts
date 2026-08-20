@@ -17,7 +17,12 @@ import * as path from 'path';
 import * as os from 'os';
 import { parseDayBookStream } from './parse/daybook.parser';
 import { validateDayBook } from './validate/daybook.validator';
-import { formatCents } from './parse/money';
+import { parseSalesRegister } from './parse/sales-register.parser';
+import { detectReport } from './detect/report.detector';
+import { VOUCHER_INDEX_TOKEN, IndexedVoucher } from '../search-index/search-index.interface';
+import type { VoucherIndex } from '../search-index/search-index.interface';
+import { getCompanyName } from '../search-index/company-name';
+import { formatCents, parseAmountToCents } from './parse/money';
 
 @Injectable()
 export class IngestService {
@@ -38,6 +43,8 @@ export class IngestService {
     private objectStore: ObjectStore,
     private auditService: AuditService,
     private dataSource: DataSource,
+    @Inject(VOUCHER_INDEX_TOKEN)
+    private readonly indexer: VoucherIndex,
   ) {}
 
   async processUpload(
@@ -240,7 +247,7 @@ export class IngestService {
       batch.debitSum = dSumCents > 0n ? formatCents(dSumCents) : '0.00';
       batch.creditSum = cSumCents > 0n ? formatCents(cSumCents) : '0.00';
       
-      const tolCents = BigInt(Math.round(parseFloat(process.env.DEBIT_CREDIT_TOLERANCE || '0.01') * 100));
+      const tolCents = parseAmountToCents(process.env.DEBIT_CREDIT_TOLERANCE || '0.01') ?? 1n;
       const diff = dSumCents - cSumCents;
       const absDiff = diff < 0n ? -diff : diff;
 
@@ -339,6 +346,54 @@ export class IngestService {
         userId, action: 'publish', entityType: 'ingest_batch', entityId: batchId, ip, userAgent, meta: {}
       }, manager);
     });
+  
+    // Indexer best-effort sync
+    try {
+      const vouchers = await this.voucherRepo.find({
+        where: { batchId: String(batchId), validTo: IsNull(), isDeleted: false }
+      });
+      console.log(`[Indexer] found ${vouchers.length} vouchers for batch ${batchId}`);
+      
+      const docs: IndexedVoucher[] = vouchers.map(v => {
+        let vch_date = '';
+        if (typeof v.vchDate === 'string') {
+          vch_date = v.vchDate;
+        } else {
+          const d = new Date(v.vchDate as any);
+          const yyyy = d.getFullYear();
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const dd = String(d.getDate()).padStart(2, '0');
+          vch_date = `${yyyy}-${mm}-${dd}`;
+        }
+        return {
+          id: String(v.id),
+          company_id: v.companyId,
+          company_name: getCompanyName(v.companyId),
+          vch_no: v.vchNo || '',
+          vch_no_norm: v.vchNoNorm || '',
+          party_name: v.partyName,
+          total_amount: v.totalAmount ?? '0.00',
+          narration: v.narration,
+          vch_date,
+          vch_type: v.vchType,
+          batch_id: String(v.batchId),
+        };
+      });
+      
+      await this.indexer.upsert(docs);
+
+      // Remove superseded/deleted
+      const superseded = await this.voucherRepo.createQueryBuilder('v')
+        .where('v.batch_id = :batchId', { batchId })
+        .andWhere('(v.valid_to IS NOT NULL OR v.is_deleted = true)')
+        .getMany();
+
+      if (superseded.length > 0) {
+        await this.indexer.deleteByIds(superseded.map(v => String(v.id)));
+      }
+    } catch (err) {
+      console.error('Indexer failed during publishBatch', err);
+    }
 
     return this.getBatch(batchId);
   }
@@ -358,6 +413,13 @@ export class IngestService {
         userId, action: 'unpublish', entityType: 'ingest_batch', entityId: batchId, ip, userAgent, meta: {}
       }, manager);
     });
+
+    // Indexer best-effort sync
+    try {
+      await this.indexer.deleteByBatchId(String(batchId));
+    } catch (err) {
+      console.error('Indexer failed during holdBatch', err);
+    }
 
     return this.getBatch(batchId);
   }

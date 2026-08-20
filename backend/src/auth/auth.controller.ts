@@ -1,5 +1,6 @@
-import { Controller, Post, Body, Get, Req, HttpCode } from '@nestjs/common';
+import { Controller, Post, Body, Get, Req, HttpCode, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { Public } from './public.decorator';
@@ -14,6 +15,8 @@ export class AuthController {
   @Public()
   @Post('login')
   @HttpCode(200)
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   async login(@Body() loginDto: LoginDto, @Req() req: Request) {
     const ip = req.ip;
     const userAgent = req.headers['user-agent'];

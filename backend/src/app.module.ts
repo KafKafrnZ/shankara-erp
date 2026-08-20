@@ -16,6 +16,8 @@ import { StorageModule } from './storage/storage.module';
 import { SearchModule } from './search/search.module';
 import { VouchersModule } from './vouchers/vouchers.module';
 import { MetaModule } from './meta/meta.module';
+import { SearchIndexModule } from './search-index/search-index.module';
+import { ThrottlerModule } from '@nestjs/throttler';
 
 @Module({
   imports: [
@@ -36,6 +38,7 @@ import { MetaModule } from './meta/meta.module';
         MAX_UPLOAD_BYTES: Joi.number().default(52428800),
         DEBIT_CREDIT_TOLERANCE: Joi.number().default(0.01),
         EXPECTED_TALLY_COMPANY_SUBSTR: Joi.string().default('shankara'),
+        OPENSEARCH_NODE: Joi.string().default('http://127.0.0.1:9200'),
       }),
     }),
     TypeOrmModule.forRootAsync({
@@ -62,6 +65,10 @@ import { MetaModule } from './meta/meta.module';
     SearchModule,
     VouchersModule,
     MetaModule,
+    SearchIndexModule,
+    ThrottlerModule.forRoot({
+      throttlers: [{ name: 'default', ttl: 60000, limit: 10 }],
+    }),
   ],
   providers: [
     {

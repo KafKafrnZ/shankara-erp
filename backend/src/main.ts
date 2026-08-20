@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -9,9 +10,11 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   
   app.setGlobalPrefix('api');
-  
+  app.use(helmet());
+
+  const corsOrigin = configService.get<string>('CORS_ORIGIN') || 'http://127.0.0.1:5173';
   app.enableCors({
-    origin: configService.get<string>('CORS_ORIGIN'),
+    origin: Array.from(new Set([corsOrigin, 'http://127.0.0.1:5173', 'http://localhost:5173'])),
   });
   
   app.useGlobalPipes(new ValidationPipe({

@@ -2,7 +2,7 @@
 
 **Start here:** `PHASE_STATUS.md` (Phase 1 + 2 results, official p95, Phase 3 scope).  
 **Date:** 2026-08-19  
-**Phase 1 and Phase 2 are complete.** Do not reopen S0–S16. Phase 3 is not started.
+**Phase 1 and Phase 2 are complete.** Do not reopen S0–S16. Phase 3 S17+S18 complete. **S19** is OS candidates + SQL visibility (`S19_BRIEF.md`).
 
 This file replaces `AUDIT_FIX_BRIEF.md`. That brief was a genuine post-Phase-1 code review. The items below were either **fixed in this pass** or **left open on purpose**. Do not re-implement S0–S10. Do not treat old `S*_BRIEF.md` “S10 is forbidden” / “do not start Phase 2” lines as current work orders — those steps are **closed history**.
 
@@ -22,7 +22,7 @@ You are not starting Phase 1. You are not writing another S-brief.
   3. `GET /api/health` `asOf` is always `null`. Real as-of is `GET /api/meta/as-of`.
   4. Search still **ORs** `ILIKE '%q%'` on every query so party names with digits match. Amount search for `1000` still counts all SYN9 rows. Fine at 20k.
   5. E2e clones inflate `Sri Steel` / `1248500` hit totals. Do **not** `TRUNCATE voucher`.
-- Phase 2 is **COMPLETE**. Do not implement Phase 3 (OpenSearch, Purchase, mapping UI) until `S17_BRIEF.md` exists. Do not reopen S9/S10.
+- Phase 2 is **COMPLETE**. S17+S18 **COMPLETE**. S19 is issued (candidates + SQL intersect, no fuzz). Do not reopen S9/S10.
 
 ---
 

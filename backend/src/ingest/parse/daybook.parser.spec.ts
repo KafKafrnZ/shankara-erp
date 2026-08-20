@@ -23,7 +23,7 @@ describe('DayBook Parser', () => {
     for (const line of csvLines) {
       if (line.trim() === '') continue;
       // manual split just for testing builder
-      const cols = [];
+      const cols: string[] = [];
       let cur = '';
       let inQuotes = false;
       for (let i = 0; i < line.length; i++) {
