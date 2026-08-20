@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { AuditService } from '../audit/audit.service';
 
@@ -10,25 +10,23 @@ export class VouchersService {
   ) {}
 
   async getVoucher(id: number, user: any, versionAll: boolean, ip?: string, userAgent?: string) {
+    const params: unknown[] = [id];
     let query = `
       SELECT v.*, b.status as batch_status, b.published_at as published_at, b.source_file_id as source_file_id
       FROM voucher v
       JOIN ingest_batch b ON v.batch_id = b.id
       WHERE v.id = $1 AND v.is_deleted = false
     `;
-    const params = [id];
+    if (user.role === 'branch') {
+      query += ` AND v.company_id = $2`;
+      params.push(user.companyId);
+    }
 
     const res = await this.dataSource.query(query, params);
     if (res.length === 0) {
       throw new NotFoundException('Voucher not found');
     }
     const row = res[0];
-
-    // Visibility rules
-    // Branch and company_id !== user.companyId -> 404 (not 403)
-    if (user.role === 'branch' && row.company_id !== user.companyId) {
-      throw new NotFoundException('Voucher not found');
-    }
 
     // Current + unpublished batch -> 404
     if (row.valid_to === null && row.batch_status !== 'published') {

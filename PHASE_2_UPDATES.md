@@ -76,7 +76,7 @@ The exact request that previously 500'd now returns a clean `held` batch. **e2e 
 
 Findings from the same audit, left open on purpose — separate from the one P0 above:
 
-1. `vouchers.service.ts:14-20` fetches by voucher ID with no `company_id` in the SQL `WHERE`, then checks it in JS and 404s on mismatch. Behaviorally safe today, but violates "RBAC is in the query, not after" (`PHASE_1_AUDIT.md` §1.7) and is inconsistent with `search.service.ts`'s correct in-query filter. Worth a follow-up, not urgent — nothing leaks in the current response shape.
+1. `vouchers.service.ts` GET-by-id **now** adds `AND v.company_id = $2` for `branch` (404, not 403). Applied 2026-08-20.
 2. `ingest.service.ts:243` still uses `parseFloat` for `DEBIT_CREDIT_TOLERANCE` env parsing. Not on the stored-money path (a threshold constant, not a fact), but contradicts `money.ts`'s own no-float framing.
 3. `UploadDto.autoPublish` is validated and accepted but never read anywhere in `ingest.service.ts`. Dead field — either wire it or delete it.
 4. `sales-register.parser.spec.ts` only asserts `lines.length === 4` for the Apex Pipes invoice, not per-line ledger/debit/credit values. A regression that kept the line count right while scrambling CGST/SGST amounts would pass today.
