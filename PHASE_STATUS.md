@@ -11,6 +11,8 @@
 | **2** Sales Register on the same path | **COMPLETE** | `PHASE_2_EVIDENCE.md` → `PHASE_2_STATUS=COMPLETE` |
 | **3** Search-engine quality | **NOT STARTED** | No S17 brief yet. Do not implement. |
 
+**Pre–Phase 3 stress (2026-08-20):** mixed synthetic Day Book **N=10000** (`STRS`/`STRP`/…), parse 10k/34k lines 0 rejects, HTTP ingest ~72 s, search worst p95 **122 ms**. Details: `STRESS_DAYBOOK.md`. Does **not** replace official S9 p95 **135 ms**.
+
 Independent human review accepted every S-step against live Docker + `http://127.0.0.1:3000`. Do not take implementer chat as proof.
 
 ---
@@ -250,3 +252,4 @@ Compose already has `shankara-opensearch`. Phase 3 may **wire** it. Until S17 ex
 | Backend e2e | 39 passed |
 | Search engine today | Postgres SQL |
 | OpenSearch in `backend/src` | none |
+| Mixed 10k Day Book stress | parse 0 rejects; ingest 72 s; search worst p95 **122 ms** (`STRESS_DAYBOOK.md`) |
