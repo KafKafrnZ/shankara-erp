@@ -4,7 +4,7 @@
 
 **Local run:** `docker compose up -d`, `cd backend && npm run start:dev`, `cd frontend && npm run dev` → http://127.0.0.1:5173/  
 Seed emails: `finance@shankara.local` / `steward@shankara.local` / `branch@shankara.local`  
-Passwords: `SEED_*_PASSWORD` in `backend/.env` (local: `finance_dev_pass`, `steward_dev_pass`, `branch_dev_pass`).
+Passwords: `SEED_*_PASSWORD` in `backend/.env` (never commit `.env`).
 
 **Must not break:**
 - One search box (no Parties/Items pills, no AG Grid, no Create Voucher)
