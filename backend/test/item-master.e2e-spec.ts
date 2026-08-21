@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
-import * as request from 'supertest';
+import request from 'supertest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -29,6 +29,7 @@ describe('ItemMasterController (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    app.setGlobalPrefix('api');
     await app.init();
 
     const loginSteward = await request(app.getHttpServer())
@@ -119,7 +120,7 @@ describe('ItemMasterController (e2e)', () => {
     const searchRes = await request(app.getHttpServer())
       .post('/api/item-search')
       .set('Authorization', `Bearer ${stewardToken}`)
-      .send({ q: 'ITEM1' })
+      .send({ q: 'TEST_ITEM_NAME' })
       .expect(201); // Post returns 201 by default unless configured
     expect(searchRes.body.hits.length).toBeGreaterThan(0);
 

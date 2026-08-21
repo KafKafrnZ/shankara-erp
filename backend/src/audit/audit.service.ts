@@ -7,6 +7,8 @@ export const AUDIT_ACTIONS = [
   'login', 'login_failed', 'logout',
   'upload', 'publish', 'unpublish',
   'search', 'voucher_open',
+  'item_upload', 'item_publish', 'item_hold',
+  'item_collision_warn', 'job_status_override_warn',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

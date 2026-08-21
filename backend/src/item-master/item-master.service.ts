@@ -78,6 +78,7 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
         return {
           batchId: Number(existingBatch.id),
           status: 'duplicate',
+          duplicate: true,
           sha256,
           originalName,
         };
