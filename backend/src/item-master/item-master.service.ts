@@ -82,6 +82,24 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
       if (existingBatch) {
         await queryRunner.rollbackTransaction();
         fs.unlinkSync(tmpPath);
+
+        // File dedup means re-uploading the identical file would otherwise
+        // just point back at the same stuck/failed batch forever with no
+        // way to recover it. If that's what happened, retry it instead of
+        // reporting an inert duplicate — this is exactly the case where
+        // someone re-uploads a file hoping something will happen.
+        if (existingBatch.status === 'processing' || existingBatch.status === 'rejected') {
+          await this.retryBatch(Number(existingBatch.id), userId, ip, userAgent);
+          return {
+            batchId: Number(existingBatch.id),
+            status: 'processing',
+            duplicate: true,
+            retried: true,
+            sha256,
+            originalName,
+          };
+        }
+
         return {
           batchId: Number(existingBatch.id),
           status: 'duplicate',
@@ -153,8 +171,21 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
-    
+
     try {
+      // Transaction-scoped advisory lock, keyed by batch id: if a retry gets
+      // triggered (manually, or automatically by re-uploading the same
+      // file) while this batch is still genuinely being processed by an
+      // earlier run, the second run sees the lock already held and exits
+      // immediately instead of racing the first one over the same rows.
+      // Auto-released at commit/rollback — nothing to manually unlock.
+      const lockResult = await queryRunner.manager.query('SELECT pg_try_advisory_xact_lock($1) as locked', [batchId]);
+      if (!lockResult[0].locked) {
+        console.warn(`[ItemMasterService] batch ${batchId} is already being processed by another run — skipping this one`);
+        await queryRunner.rollbackTransaction();
+        return;
+      }
+
       const batch = await queryRunner.manager.findOne(ItemMasterBatch, { where: { id: String(batchId) }, relations: { sourceFile: true } });
       if (!batch) {
         await queryRunner.rollbackTransaction();
@@ -395,6 +426,37 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
         userId, action: 'item_hold', entityType: 'item_master_batch', entityId: batchId, ip, userAgent, meta: {}
       }, manager);
     });
+
+    return this.getBatch(batchId);
+  }
+
+  // Recovers a batch stuck in 'processing' (the background job crashed,
+  // hung, or was never picked up) or 'rejected' (a transient failure, not
+  // necessarily a real problem with the file). Before this existed, the
+  // only way to unstick a batch was a direct database edit — re-uploading
+  // the identical file just returned an inert "duplicate" pointing at the
+  // same stuck batch forever, since dedup is by file hash. Safe to call
+  // even if the batch is still genuinely being processed right now: the
+  // advisory lock in processBatchJob() means the resulting second run just
+  // exits immediately instead of racing the first one.
+  async retryBatch(batchId: number, userId: string, ip?: string, userAgent?: string) {
+    const batch = await this.batchRepo.findOneBy({ id: String(batchId) });
+    if (!batch) throw new NotFoundException('Batch not found');
+    if (batch.status !== 'processing' && batch.status !== 'rejected') {
+      throw new BadRequestException('Only a batch stuck processing or that failed can be retried');
+    }
+
+    batch.status = 'processing';
+    batch.errorSummary = null;
+
+    await this.dataSource.transaction(async manager => {
+      await manager.save(batch);
+      await this.auditService.log({
+        userId, action: 'item_retry', entityType: 'item_master_batch', entityId: batchId, ip, userAgent, meta: {}
+      }, manager);
+    });
+
+    await this.boss.send('item-master-parse', { batchId: Number(batchId) });
 
     return this.getBatch(batchId);
   }

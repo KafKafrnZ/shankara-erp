@@ -10,6 +10,7 @@ interface UploadResponse {
   batchId: number;
   status: string;
   duplicate: boolean;
+  retried?: boolean;
   sha256: string;
   originalName: string;
 }
@@ -56,6 +57,7 @@ export function CatalogUploadPage() {
   const [busy, setBusy] = useState(false);
   const [expandedRaw, setExpandedRaw] = useState<number | null>(null);
   const [pollTimeout, setPollTimeout] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
 
   const { user } = useAuth();
 
@@ -84,7 +86,12 @@ export function CatalogUploadPage() {
       setPollTimeout(false);
     }
     return () => clearInterval(t);
-  }, [batch?.id, batch?.status]);
+    // retryNonce is intentionally in the deps but otherwise unused here: a
+    // retry can put a batch back into 'processing' when it was ALREADY
+    // 'processing' (the stuck case), which wouldn't otherwise register as
+    // a dependency change and restart this timer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batch?.id, batch?.status, retryNonce]);
 
   const loadBatch = async (id: number) => {
     try {
@@ -150,7 +157,9 @@ export function CatalogUploadPage() {
 
     try {
       const res = await api<UploadResponse>('/api/item-uploads', { method: 'POST', body: formData });
-      if (res.duplicate) {
+      if (res.retried) {
+        setUploadNote(`This file was already uploaded as batch ${res.batchId} but got stuck or failed — restarted processing for it.`);
+      } else if (res.duplicate) {
         setUploadNote(`This file was already uploaded (batch ${res.batchId}).`);
       }
       setParams({ batch: String(res.batchId) });
@@ -197,6 +206,22 @@ export function CatalogUploadPage() {
     }
   };
 
+  const onRetry = async () => {
+    if (!batch) return;
+    setBusy(true);
+    setError('');
+    setPollTimeout(false);
+    try {
+      const next = await api<ItemBatch>(`/api/item-batches/${batch.id}/retry`, { method: 'POST' });
+      setBatch(next);
+      setRetryNonce((n) => n + 1);
+    } catch (err) {
+      setError(isApiError(err) ? err.message : 'Retry failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="upload-page">
       <h1 className="page-title">Catalog Upload</h1>
@@ -236,7 +261,10 @@ export function CatalogUploadPage() {
           {batch.status === 'processing' && pollTimeout && (
             <div className="banner banner-critical">
               <p className="banner-title">Still processing after 2 minutes</p>
-              <p>This may indicate a problem. Refresh the page to check again, or contact your steward team.</p>
+              <p>This may indicate a problem. You can retry it directly below, or refresh the page to keep checking.</p>
+              <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => void onRetry()}>
+                {busy ? 'Retrying…' : 'Retry'}
+              </button>
             </div>
           )}
           {batch.status !== 'processing' && (
@@ -256,10 +284,13 @@ export function CatalogUploadPage() {
             </dl>
           )}
 
-          {batch.status === 'rejected' && batch.errorSummary && (
+          {batch.status === 'rejected' && (
             <div className="banner banner-critical">
               <p className="banner-title">File rejected</p>
-              <p>{batch.errorSummary}</p>
+              {batch.errorSummary && <p>{batch.errorSummary}</p>}
+              <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => void onRetry()}>
+                {busy ? 'Retrying…' : 'Retry'}
+              </button>
             </div>
           )}
 

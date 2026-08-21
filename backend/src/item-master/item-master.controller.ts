@@ -69,4 +69,11 @@ export class ItemBatchesController {
   async getSkips(@Param('id') id: string) {
     return this.itemMasterService.getSkips(Number(id));
   }
+
+  @Roles('steward')
+  @Post(':id/retry')
+  @HttpCode(200)
+  async retryBatch(@Param('id') id: string, @Req() req: AuthedRequest) {
+    return this.itemMasterService.retryBatch(Number(id), req.user.id, req.ip, req.headers['user-agent'] as string);
+  }
 }

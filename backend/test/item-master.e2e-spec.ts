@@ -133,4 +133,67 @@ describe('ItemMasterController (e2e)', () => {
 
     expect(dupRes.body.duplicate).toBe(true);
   }, 40000); // Allow up to 40s
+
+  it('a batch stuck in processing can be recovered', async () => {
+    const { tmp: xlsxPath } = generateUniqueExcel(path.join(__dirname, '../fixtures/item-master/test-fixture-1.xlsx'));
+
+    const res = await request(app.getHttpServer())
+      .post('/api/item-uploads')
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .attach('file', xlsxPath)
+      .expect(202);
+    const batchId = res.body.batchId;
+
+    // Let it actually finish once, then force it back into 'processing' —
+    // simulates the worker crashing or never picking the job up, without
+    // needing to actually kill anything mid-flight.
+    let batchStatus = 'processing';
+    let pollCount = 0;
+    while (batchStatus === 'processing' && pollCount < 30) {
+      await new Promise(r => setTimeout(r, 1000));
+      const bRes = await request(app.getHttpServer())
+        .get(`/api/item-batches/${batchId}`)
+        .set('Authorization', `Bearer ${stewardToken}`);
+      batchStatus = bRes.body.status;
+      pollCount++;
+    }
+    expect(batchStatus).toBe('held');
+
+    await db.query(`UPDATE item_master_batch SET status = 'processing' WHERE id = $1`, [batchId]);
+
+    // Non-steward can't retry
+    await request(app.getHttpServer())
+      .post(`/api/item-batches/${batchId}/retry`)
+      .set('Authorization', `Bearer ${financeToken}`)
+      .expect(403);
+
+    // Re-uploading the identical file auto-heals a stuck batch instead of
+    // just reporting an inert duplicate.
+    const retryRes = await request(app.getHttpServer())
+      .post('/api/item-uploads')
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .attach('file', xlsxPath)
+      .expect(202);
+    expect(retryRes.body.duplicate).toBe(true);
+    expect(retryRes.body.retried).toBe(true);
+    expect(retryRes.body.status).toBe('processing');
+
+    batchStatus = 'processing';
+    pollCount = 0;
+    while (batchStatus === 'processing' && pollCount < 30) {
+      await new Promise(r => setTimeout(r, 1000));
+      const bRes = await request(app.getHttpServer())
+        .get(`/api/item-batches/${batchId}`)
+        .set('Authorization', `Bearer ${stewardToken}`);
+      batchStatus = bRes.body.status;
+      pollCount++;
+    }
+    expect(batchStatus).toBe('held');
+
+    // A held (not stuck/failed) batch can't be retried.
+    await request(app.getHttpServer())
+      .post(`/api/item-batches/${batchId}/retry`)
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .expect(400);
+  }, 60000);
 });
