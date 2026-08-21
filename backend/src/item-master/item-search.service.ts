@@ -69,10 +69,12 @@ export class ItemSearchService {
   }
 
   async getItemHistory(itemCode: string) {
-    return this.rowRepo.find({
-      where: { itemCode },
-      order: { validFrom: 'DESC' }
-    });
+    return this.rowRepo.createQueryBuilder('row')
+      .innerJoin('row.batch', 'batch')
+      .where('row.item_code = :itemCode', { itemCode })
+      .andWhere("batch.status = 'published'")
+      .orderBy('row.valid_from', 'DESC')
+      .getMany();
   }
 
   async exportCsv(query: any, res: any) {

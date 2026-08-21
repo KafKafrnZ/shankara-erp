@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Param, UseInterceptors, UploadedFile, Req, Res, BadRequestException, HttpCode } from '@nestjs/common';
+import { Controller, Post, Get, Param, UseInterceptors, UploadedFile, Req, Res, BadRequestException, HttpCode, NotFoundException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 import { Readable } from 'stream';
@@ -42,8 +42,12 @@ export class ItemBatchesController {
 
   @Roles('steward', 'finance', 'branch')
   @Get(':id')
-  async getBatch(@Param('id') id: string) {
-    return this.itemMasterService.getBatch(Number(id));
+  async getBatch(@Param('id') id: string, @Req() req: AuthedRequest) {
+    const batch = await this.itemMasterService.getBatch(Number(id));
+    if (req.user && (req.user.role === 'finance' || req.user.role === 'branch') && batch.status !== 'published') {
+      throw new NotFoundException();
+    }
+    return batch;
   }
 
   @Roles('steward')
@@ -58,5 +62,11 @@ export class ItemBatchesController {
   @HttpCode(200)
   async holdBatch(@Param('id') id: string, @Req() req: AuthedRequest) {
     return this.itemMasterService.holdBatch(Number(id), req.user.id, req.ip, req.headers['user-agent'] as string);
+  }
+
+  @Roles('steward')
+  @Get(':id/skips')
+  async getSkips(@Param('id') id: string) {
+    return this.itemMasterService.getSkips(Number(id));
   }
 }

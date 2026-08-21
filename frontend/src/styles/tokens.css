@@ -31,4 +31,6 @@
   --font-ui: 'Inter', system-ui, -apple-system, sans-serif;
   --font-editorial: 'Cormorant Garamond', Georgia, serif;
   --radius: 6px;
+  --transition-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 180ms cubic-bezier(0.4, 0, 0.2, 1);
 }

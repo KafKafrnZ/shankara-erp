@@ -1,12 +1,14 @@
-import { Controller, Get, Post, Body, Param, Res } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Res, UsePipes, ValidationPipe } from '@nestjs/common';
 import { ItemSearchService } from './item-search.service';
+import { ItemSearchDto } from './dto/item-search.dto';
 
 @Controller('item-search')
 export class ItemSearchController {
   constructor(private readonly searchService: ItemSearchService) {}
 
   @Post()
-  async search(@Body() query: any) {
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async search(@Body() query: ItemSearchDto) {
     return this.searchService.search({
       q: query.q,
       mainGroup: query.mainGroup,

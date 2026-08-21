@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth.ts';
 import { displayNameFromEmail, formatAsOf, initialsFromName } from '../lib/format.ts';
 import { LogoChip } from './BrandLogo.tsx';
+import { DotField } from './DotField.tsx';
 
 export function AppShell() {
   const { user, asOf, logout, refreshAsOf } = useAuth();
@@ -26,18 +27,27 @@ export function AppShell() {
 
   return (
     <div className="app-shell">
+      <DotField variant="light" />
       <header className="app-header">
         <div className="header-left">
           <LogoChip />
           <span className="header-wordmark">Shankara ERP</span>
           <nav className="header-nav" aria-label="Primary">
             <NavLink to="/" end className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-              Search
+              Vouchers
+            </NavLink>
+            <NavLink to="/catalog" end className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
+              Catalog
             </NavLink>
             {user.role === 'steward' && (
-              <NavLink to="/upload" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-                Upload
-              </NavLink>
+              <>
+                <NavLink to="/upload" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
+                  Upload
+                </NavLink>
+                <NavLink to="/catalog/upload" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
+                  Catalog Upload
+                </NavLink>
+              </>
             )}
           </nav>
         </div>

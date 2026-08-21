@@ -4,6 +4,8 @@ import { AppShell } from './components/AppShell.tsx';
 import { LoginPage } from './pages/LoginPage.tsx';
 import { SearchPage } from './pages/SearchPage.tsx';
 import { UploadPage } from './pages/UploadPage.tsx';
+import { CatalogPage } from './pages/CatalogPage.tsx';
+import { CatalogUploadPage } from './pages/CatalogUploadPage.tsx';
 
 function RequireAuth() {
   const { user, loading } = useAuth();
@@ -28,6 +30,8 @@ export default function App() {
       <Route element={<RequireAuth />}>
         <Route element={<AppShell />}>
           <Route path="/" element={<SearchPage />} />
+          <Route path="/catalog" element={<CatalogPage />} />
+          <Route path="/catalog/upload" element={<CatalogUploadPage />} />
           <Route path="/upload" element={<UploadPage />} />
         </Route>
       </Route>

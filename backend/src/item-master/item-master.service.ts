@@ -161,7 +161,6 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
       batch.totalRows = parsed.totalRows;
       batch.acceptedRows = parsed.acceptedRows;
       batch.skippedRows = parsed.skippedRows;
-      batch.status = 'held';
 
       if (parsed.skips.length > 0) {
         const skips = parsed.skips.map(s => this.skipRepo.create({
@@ -221,7 +220,18 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
         await queryRunner.manager.save(newRow);
       }
 
-      await queryRunner.manager.save(batch);
+      const currentBatchStatus = await queryRunner.manager.findOne(ItemMasterBatch, { where: { id: String(batchId) }, select: { status: true } });
+      if (currentBatchStatus && currentBatchStatus.status === 'processing') {
+        batch.status = 'held';
+        await queryRunner.manager.save(batch);
+      } else {
+        await this.auditService.log({
+          userId: 'system', action: 'job_status_override_warn', entityType: 'item_master_batch', entityId: batchId, meta: { originalStatus: 'processing', newStatus: currentBatchStatus?.status }
+        }, queryRunner.manager);
+        // Only save counts and row stats, but don't overwrite status
+        await queryRunner.manager.save(batch);
+      }
+      
       await queryRunner.commitTransaction();
     } catch (err) {
       await queryRunner.rollbackTransaction();
@@ -255,11 +265,23 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
     return batch;
   }
 
+  async getSkips(batchId: number) {
+    const [data, total] = await this.skipRepo.findAndCount({
+      where: { batchId: String(batchId) },
+      order: { id: 'ASC' },
+      take: 1000 // In a real app we'd paginate this
+    });
+    return { data, total };
+  }
+
   async publishBatch(batchId: number, userId: string, ip?: string, userAgent?: string) {
     const batch = await this.batchRepo.findOneBy({ id: String(batchId) });
     if (!batch) throw new NotFoundException('Batch not found');
     if (batch.status === 'published' || batch.status === 'rejected') {
       throw new BadRequestException('Batch is not in held state');
+    }
+    if (batch.status === 'processing') {
+      throw new BadRequestException('STILL_PROCESSING');
     }
 
     batch.status = 'published';
@@ -280,6 +302,9 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
     const batch = await this.batchRepo.findOneBy({ id: String(batchId) });
     if (!batch) throw new NotFoundException('Batch not found');
     if (batch.status === 'held') return batch;
+    if (batch.status === 'processing') {
+      throw new BadRequestException('STILL_PROCESSING');
+    }
 
     batch.status = 'held';
     batch.publishedAt = null;

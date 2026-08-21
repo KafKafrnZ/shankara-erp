@@ -4,6 +4,7 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth.ts';
 import { BrandLogo } from '../components/BrandLogo.tsx';
 import { isApiError } from '../lib/api.ts';
+import { DotField } from '../components/DotField.tsx';
 
 export function LoginPage() {
   const { user, loading, login } = useAuth();
@@ -41,6 +42,7 @@ export function LoginPage() {
 
   return (
     <div className="login-page">
+      <DotField variant="dark" />
       <div className="login-card">
         <BrandLogo height={46} />
         <p className="login-tagline">Book of record. Search-first.</p>

@@ -14,6 +14,17 @@ export interface ParseResult {
   items: Array<ParsedItemRow & { layoutKey: string; sourceRowNo: number; sheetName: string }>;
 }
 
+const unwrapCell = (v: any) => {
+  if (v && typeof v === 'object') {
+    if ('result' in v) return v.result;
+    if ('error' in v) return String(v.error);
+    if ('richText' in v && Array.isArray(v.richText)) return v.richText.map((t: any) => t.text).join('');
+    if ('text' in v) return v.text;
+    if (v instanceof Date) return v.toISOString();
+  }
+  return v;
+};
+
 export async function parseItemMasterStream(filePath: string): Promise<ParseResult> {
   const result: ParseResult = {
     totalSheets: 0,
@@ -28,7 +39,6 @@ export async function parseItemMasterStream(filePath: string): Promise<ParseResu
 
   const workbook = new ExcelJS.stream.xlsx.WorkbookReader(filePath, {
     worksheets: 'emit',
-    sharedStrings: 'emit',
     hyperlinks: 'emit',
   });
 
@@ -40,38 +50,41 @@ export async function parseItemMasterStream(filePath: string): Promise<ParseResu
     let detector: typeof ITEM_LAYOUT_REGISTRY[0] | null = null;
     let columnMap: Record<string, number> = {};
     let isSkippedSheet = false;
+    let rowsScanned = 0;
 
     for await (const row of worksheetReader) {
-      // ExcelJS 1-based indexing for rows.
-      // row.values is 1-indexed sparse array, meaning row.values[1] is the first column.
-      const rowValues = Array.isArray(row.values) ? row.values.slice(1) : [];
+      const rowValues = (Array.isArray(row.values) ? row.values.slice(1) : []).map(unwrapCell);
 
       if (!headerRow) {
-        headerRow = rowValues;
+        rowsScanned++;
         
         // Find matching detector
         for (const det of ITEM_LAYOUT_REGISTRY) {
-          if (det.detect(headerRow)) {
+          if (det.detect(rowValues)) {
             detector = det;
             break;
           }
         }
 
-        if (!detector) {
+        if (detector) {
+          headerRow = rowValues;
+          result.recognizedSheets++;
+          columnMap = buildColumnMap(headerRow);
+          continue; // Move to data rows
+        }
+
+        if (rowsScanned >= 20) {
           isSkippedSheet = true;
           result.skippedSheets++;
           result.skips.push({
             sheetName,
             sourceRowNo: null,
             code: 'UNRECOGNIZED_SHEET',
-            message: `Sheet ${sheetName} did not match any known layout. Headers: ${JSON.stringify(headerRow).substring(0, 100)}`,
+            message: `Sheet ${sheetName} did not match any known layout after 20 rows.`,
           });
           break; // Skip rest of the sheet
         }
-
-        result.recognizedSheets++;
-        columnMap = buildColumnMap(headerRow);
-        continue;
+        continue; // Keep scanning
       }
 
       if (isSkippedSheet) {
