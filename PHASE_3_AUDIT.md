@@ -1,10 +1,12 @@
 # PHASE 3 COMPLETION BRIEF — SEARCH-ENGINE QUALITY (THIN)
 
-**Document type:** Binding spec for Phase 3. Implementing agent: Gemini.  
+**Status:** COMPLETE (2026-08-21). Evidence: `PHASE_3_EVIDENCE.md`. Do not reopen S17–S22.
+
+**Document type:** Binding spec for Phase 3 (historical work order).  
 **Product:** Shankara Buildpro — Tally Data Access Layer (read-only)  
 **Repo:** `D:/5ingularity/shankara-erp`  
 **Date:** 2026-08-20  
-**Phase 1:** COMPLETE. **Phase 2:** COMPLETE. Do not reopen S0–S16.  
+**Phase 1:** COMPLETE. **Phase 2:** COMPLETE. **Phase 3:** COMPLETE. Do not reopen S0–S22.  
 **If this file and a later `S*_BRIEF.md` conflict, the S-brief wins.**
 
 ---

@@ -4,7 +4,7 @@ import { UsersService } from '../users/users.service';
 import { AuditService } from '../audit/audit.service';
 import * as bcrypt from 'bcrypt';
 import { LoginDto } from './dto/login.dto';
-import { JwtPayload } from './auth-user';
+import { JwtPayload, toAuthUser } from './auth-user';
 
 @Injectable()
 export class AuthService {
@@ -59,12 +59,7 @@ export class AuthService {
 
     return {
       accessToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        companyId: user.companyId,
-      },
+      user: toAuthUser(user),
     };
   }
 

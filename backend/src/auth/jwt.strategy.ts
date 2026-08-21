@@ -3,7 +3,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from '../users/users.service';
-import { JwtPayload } from './auth-user';
+import { JwtPayload, toAuthUser } from './auth-user';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -23,12 +23,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!user || !user.isActive) {
       throw new UnauthorizedException();
     }
-    return {
-      id: user.id,
-      email: user.email,
-      role: user.role,
-      companyId: user.companyId,
-      branchId: user.branchId,
-    };
+    return toAuthUser(user);
   }
 }

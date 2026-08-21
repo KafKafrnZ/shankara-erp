@@ -1,0 +1,34 @@
+:root {
+  /* brand */
+  --sb-red: #e30613;
+  --sb-red-deep: #c10510;
+  --sb-red-soft: #f26b73;
+  --sb-white: #ffffff;
+  --sb-off-white: #f7f7f7;
+  --sb-mist: #ececec;
+  --sb-ink: #141414;
+  --sb-muted: #5c5c5c;
+  --sb-line: #d1d5db;
+  --sb-logo-red: #ff0000;
+
+  /* app aliases */
+  --bg: var(--sb-off-white);
+  --surface: var(--sb-white);
+  --surface-sunken: var(--sb-mist);
+  --ink: var(--sb-ink);
+  --muted: var(--sb-muted);
+  --line: var(--sb-line);
+  --accent: var(--sb-red);
+  --accent-deep: var(--sb-red-deep);
+
+  /* semantic state — deliberately distinct from --accent so critical
+     pills don't blend into brand-red chrome (header, CTAs) */
+  --success-bg: #e9f5ee; --success-text: #146c43; --success-line: #146c43;
+  --warning-bg: #fdf3e0; --warning-text: #8a5300; --warning-line: #8a5300;
+  --critical-bg: #fbeae8; --critical-text: #7a231b; --critical-line: #7a231b;
+  --info-bg: var(--sb-mist); --info-text: var(--sb-muted); --info-line: var(--sb-line);
+
+  --font-ui: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-editorial: 'Cormorant Garamond', Georgia, serif;
+  --radius: 6px;
+}

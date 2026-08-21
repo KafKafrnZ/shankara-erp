@@ -9,11 +9,9 @@ syn9_current: 20000
 
 Gemini quota-stopped mid S20. Human finished: mapping/fuzz already in adapter; steward reindex; debug SQL logs removed; node-fetch `_count` hack removed.
 
-`S20_EVIDENCE.md` was locked by another process; this file is the filled table.
-
 | # | Gate | Evidence |
 |---|---|---|
-| 1 | env + health + `:9200` | `curl.exe -s http://127.0.0.1:3000/api/health` → `{"status":"ok","db":"ok","asOf":null}`. `:9200` cluster **shankara-search-cluster** 2.11.0 |
+| 1 | env + health + `:9200` | `curl.exe -s http://127.0.0.1:3000/api/health` → `{"status":"ok","db":"ok",...}`. `:9200` cluster **shankara-search-cluster** 2.11.0 |
 | 2 | tsc | `npx tsc --noEmit -p tsconfig.build.json` exit 0 |
 | 3 | npm test | Test Suites: 10 passed, 10 total. Tests: **49** passed |
 | 4 | e2e | not re-run this finish pass (e2e clones inflate INV/SR). Last known S19: 39 passed |

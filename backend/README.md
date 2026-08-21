@@ -1,6 +1,6 @@
-# Shankara Buildpro — Data Layer (backend)
+# Shankara Buildpro — backend
 
-Read-only Tally Day Book ingest / search / retrieve. NestJS 11, PostgreSQL 16 via **PgBouncer :6432**, TypeORM `synchronize: false`.
+Read-only Tally Day Book **and** Sales Register ingest / search / retrieve. NestJS 11, PostgreSQL 16 via **PgBouncer :6432**, TypeORM `synchronize: false`. OpenSearch is a projection of published current vouchers, not the retrieve source of truth.
 
 ## Run (host)
 
@@ -11,7 +11,7 @@ Read-only Tally Day Book ingest / search / retrieve. NestJS 11, PostgreSQL 16 vi
 5. `npx ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:run -d src/database/data-source.ts`
 6. `npx ts-node src/database/seed.ts`
 7. `npm run start:dev` → `GET http://127.0.0.1:3000/api/health` must be `{"status":"ok","db":"ok",...}`
-8. Frontend: `cd frontend && npm ci && npm run dev` → `http://localhost:5173`
+8. Frontend: `cd frontend && npm ci && npm run dev` → `http://127.0.0.1:5173`
 
 Seeded users: `steward@shankara.local`, `finance@shankara.local`, `branch@shankara.local` (passwords from `.env`).
 

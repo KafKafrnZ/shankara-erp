@@ -47,6 +47,7 @@ describe('Auth (e2e)', () => {
     expect(res.body.accessToken).toEqual(expect.any(String));
     expect(res.body.user.role).toBe('steward');
     expect(res.body.user.email).toBe('steward@shankara.local');
+    expect(res.body.user.displayName).toBe('System Steward');
     stewardToken = res.body.accessToken;
   });
 
@@ -89,6 +90,21 @@ describe('Auth (e2e)', () => {
 
     expect(res.body.email).toBe('steward@shankara.local');
     expect(res.body.role).toBe('steward');
+    expect(res.body.displayName).toBe('System Steward');
+  });
+
+  it('GET /api/meta/vch-types and companies are authenticated lists', async () => {
+    const types = await request(app.getHttpServer())
+      .get('/api/meta/vch-types')
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .expect(200);
+    expect(Array.isArray(types.body.items)).toBe(true);
+
+    const companies = await request(app.getHttpServer())
+      .get('/api/meta/companies')
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .expect(200);
+    expect(Array.isArray(companies.body.items)).toBe(true);
   });
 
   it('GET /api/health remains public 200', async () => {

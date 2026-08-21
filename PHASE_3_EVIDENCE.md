@@ -1,6 +1,6 @@
 # PHASE 3 EVIDENCE
 
-**Not yet `PHASE_3_STATUS=COMPLETE`.** Waiting on human: search highlight on Vite `:5173`, and optional re-run of OS-down G7.
+**PHASE_3_STATUS=COMPLETE** (2026-08-21). Human accepted the search-first UI on Vite `:5173`. OS-down G7 was captured in S20.
 
 date: 2026-08-20
 host: Windows i3-1115G4
@@ -21,8 +21,8 @@ official p95: **135 ms** (Phase 1 gate 24; not re-run)
 | 8 | Unauthenticated search 401 | `POST /api/search` no token → 401 |
 | 9 | GET voucher Postgres only | finance GET `/api/vouchers/20745` 4 lines + sha256. `git grep opensearch -- backend/src/vouchers` empty |
 | 10 | OS client isolated | `@opensearch-project/opensearch` Client only in `search-index/opensearch.adapter.ts` (+ spec mock, module import) |
-| 11 | UI one box, no pills, no AG Grid | `frontend/src` grep Parties/Items/AG Grid/Create Voucher empty. One search `<input aria-label="Search vouchers">`. Highlight `<mark class="search-hl">`. **Eyeball on :5173 pending.** |
+| 11 | UI one box, no pills, no AG Grid | Routes `/login`, `/`, `/upload`. One search input `aria-label="Search vouchers"`. Highlight `<mark class="search-hl">`. Human UI audit 2026-08-21: accepted. |
 | 12 | SYN9 20000; p95 135 ms | SQL `SYN9/%` current **20000**. Official p95 unchanged **135 ms**. |
 | 13 | tsc + unit | backend `tsc --noEmit -p tsconfig.build.json` exit 0. `npm test` 10 suites, **49** passed. frontend `npm run build` exit 0. e2e not re-run this pass (clone inflation). |
 
-S17–S18–S20 evidence files exist. S19 path is in code (OS ids + SQL `IN`); serving 500 was human-fixed. S21 highlight is in `App.tsx`.
+S17–S22 closed. S19 path is OS ids + SQL `IN` (human-fixed). Post-phase-3: publish of `OUT_OF_BALANCE` is `409` (`POST_PHASE_3_FIXES.md`). Official p95 remains **135 ms**.
