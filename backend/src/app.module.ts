@@ -18,6 +18,7 @@ import { VouchersModule } from './vouchers/vouchers.module';
 import { MetaModule } from './meta/meta.module';
 import { SearchIndexModule } from './search-index/search-index.module';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ItemMasterModule } from './item-master/item-master.module';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
     VouchersModule,
     MetaModule,
     SearchIndexModule,
+    ItemMasterModule,
     ThrottlerModule.forRoot({
       throttlers: [{ name: 'default', ttl: 60000, limit: 10 }],
     }),

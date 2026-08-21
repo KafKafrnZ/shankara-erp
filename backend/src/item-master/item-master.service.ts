@@ -1,0 +1,297 @@
+import { Injectable, NotFoundException, BadRequestException, OnModuleInit, OnModuleDestroy, Inject } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, DataSource, IsNull } from 'typeorm';
+import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as stream from 'stream';
+import { promisify } from 'util';
+import { PgBoss } from 'pg-boss';
+
+import { ItemMasterBatch } from './entities/item-master-batch.entity';
+import { ItemMasterRow } from './entities/item-master-row.entity';
+import { ItemMasterSkip } from './entities/item-master-skip.entity';
+import { SourceFile } from '../ingest/entities/source-file.entity';
+import type { ObjectStore } from '../storage/object-store';
+import { OBJECT_STORE } from '../storage/object-store';
+import { AuditService } from '../audit/audit.service';
+import { parseItemMasterStream } from './parse/item-master.parser';
+
+const pipeline = promisify(stream.pipeline);
+
+@Injectable()
+export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
+  private boss: PgBoss;
+
+  constructor(
+    @InjectRepository(ItemMasterBatch) private batchRepo: Repository<ItemMasterBatch>,
+    @InjectRepository(ItemMasterRow) private rowRepo: Repository<ItemMasterRow>,
+    @InjectRepository(ItemMasterSkip) private skipRepo: Repository<ItemMasterSkip>,
+    @InjectRepository(SourceFile) private sourceFileRepo: Repository<SourceFile>,
+    @Inject(OBJECT_STORE) private objectStore: ObjectStore,
+    private dataSource: DataSource,
+    private auditService: AuditService,
+  ) {}
+
+  async onModuleInit() {
+    this.boss = new PgBoss({
+      host: process.env.DATABASE_HOST || '127.0.0.1',
+      port: parseInt(process.env.DATABASE_PORT || '6432', 10),
+      user: process.env.DATABASE_USER || 'shankara',
+      password: process.env.DATABASE_PASSWORD || 'shankara123',
+      database: process.env.DATABASE_NAME || 'shankara',
+    });
+
+    this.boss.on('error', error => console.error(error));
+
+    await this.boss.start();
+
+    await this.boss.work('item-master-parse', async (job) => {
+      const { batchId } = (Array.isArray(job) ? job[0].data : (job as any).data) as { batchId: number };
+      await this.processBatchJob(batchId);
+    });
+  }
+
+  async onModuleDestroy() {
+    await this.boss.stop();
+  }
+
+  async processUpload(fileStream: stream.Readable, originalName: string, mimeType: string, byteSize: number, userId: string, ip?: string, userAgent?: string) {
+    const tmpPath = path.join('/tmp', `item_upload_${Date.now()}_${Math.random().toString(36).substring(7)}`);
+    const writeStream = fs.createWriteStream(tmpPath);
+    const hash = crypto.createHash('sha256');
+
+    fileStream.on('data', chunk => hash.update(chunk));
+    await pipeline(fileStream, writeStream);
+
+    const sha256 = hash.digest('hex');
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const existingBatch = await queryRunner.manager.findOne(ItemMasterBatch, { where: { fileSha256: sha256 } });
+      if (existingBatch) {
+        await queryRunner.rollbackTransaction();
+        fs.unlinkSync(tmpPath);
+        return {
+          batchId: Number(existingBatch.id),
+          status: 'duplicate',
+          sha256,
+          originalName,
+        };
+      }
+
+      let sourceFile = await queryRunner.manager.findOne(SourceFile, { where: { sha256 } });
+      if (!sourceFile) {
+        const readStream = fs.createReadStream(tmpPath);
+        const stored = await this.objectStore.put(sha256, readStream, mimeType);
+
+        sourceFile = this.sourceFileRepo.create({
+          sha256,
+          storageKey: stored.key,
+          byteSize: String(byteSize),
+          contentType: mimeType,
+          originalName,
+          uploadedBy: userId,
+        });
+        await queryRunner.manager.save(sourceFile);
+      }
+
+      const batch = this.batchRepo.create({
+        sourceFileId: sourceFile.id,
+        fileSha256: sha256,
+        uploadedBy: userId,
+        status: 'processing',
+      });
+      await queryRunner.manager.save(batch);
+
+      await this.auditService.log({
+        userId, action: 'item_upload', entityType: 'item_master_batch', entityId: batch.id, ip, userAgent, meta: { sha256 }
+      }, queryRunner.manager);
+
+      await queryRunner.commitTransaction();
+
+      // Enqueue background job
+      await this.boss.send('item-master-parse', { batchId: Number(batch.id) });
+
+      fs.unlinkSync(tmpPath);
+
+      return {
+        batchId: Number(batch.id),
+        status: 'processing',
+        duplicate: false,
+        sha256,
+        originalName,
+      };
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  private async processBatchJob(batchId: number) {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    
+    try {
+      const batch = await queryRunner.manager.findOne(ItemMasterBatch, { where: { id: String(batchId) }, relations: { sourceFile: true } });
+      if (!batch) {
+        await queryRunner.rollbackTransaction();
+        return;
+      }
+
+      const objectStream = await this.objectStore.get(batch.sourceFile.storageKey);
+      const tmpPath = path.join('/tmp', `item_parse_${batchId}_${Date.now()}.xlsx`);
+      
+      const writeStream = fs.createWriteStream(tmpPath);
+      await pipeline(objectStream, writeStream);
+
+      const parsed = await parseItemMasterStream(tmpPath);
+      fs.unlinkSync(tmpPath);
+
+      batch.totalSheets = parsed.totalSheets;
+      batch.recognizedSheets = parsed.recognizedSheets;
+      batch.skippedSheets = parsed.skippedSheets;
+      batch.totalRows = parsed.totalRows;
+      batch.acceptedRows = parsed.acceptedRows;
+      batch.skippedRows = parsed.skippedRows;
+      batch.status = 'held';
+
+      if (parsed.skips.length > 0) {
+        const skips = parsed.skips.map(s => this.skipRepo.create({
+          batchId: batch.id,
+          sheetName: s.sheetName,
+          sourceRowNo: s.sourceRowNo,
+          code: s.code,
+          message: s.message,
+          raw: s.raw,
+        }));
+        await queryRunner.manager.save(skips);
+      }
+
+      for (const item of parsed.items) {
+        const fingerprintData = {
+          layoutKey: item.layoutKey,
+          itemCode: item.itemCode,
+          catalogueNo: item.catalogueNo,
+          sapItemCode: item.sapItemCode,
+          brand: item.brand,
+          itemName: item.itemName,
+          hsnDescription: item.hsnDescription,
+          mainGroup: item.mainGroup,
+          subGroup: item.subGroup,
+          uom: item.uom,
+          alias: item.alias,
+          extra: item.extra,
+        };
+        const fingerprint = crypto.createHash('sha256').update(JSON.stringify(fingerprintData)).digest('hex');
+
+        const currentRow = await queryRunner.manager.findOne(ItemMasterRow, {
+          where: { itemCode: item.itemCode, validTo: IsNull() },
+          order: { id: 'DESC' }
+        });
+
+        if (currentRow) {
+          if (currentRow.fingerprint === fingerprint) {
+            continue; // No-op
+          }
+          
+          if (currentRow.brand !== item.brand || currentRow.mainGroup !== item.mainGroup) {
+             // Warn level audit
+             await this.auditService.log({
+               userId: 'system', action: 'item_collision_warn', entityType: 'item_master_row', entityId: currentRow.id, meta: { oldBrand: currentRow.brand, newBrand: item.brand, oldGroup: currentRow.mainGroup, newGroup: item.mainGroup, itemCode: item.itemCode }
+             }, queryRunner.manager);
+          }
+
+          currentRow.validTo = new Date();
+          await queryRunner.manager.save(currentRow);
+        }
+
+        const newRow = this.rowRepo.create({
+          batchId: batch.id,
+          ...item,
+          fingerprint,
+        });
+        await queryRunner.manager.save(newRow);
+      }
+
+      await queryRunner.manager.save(batch);
+      await queryRunner.commitTransaction();
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      
+      const queryRunnerFail = this.dataSource.createQueryRunner();
+      await queryRunnerFail.connect();
+      await queryRunnerFail.startTransaction();
+      try {
+        const batchFail = await queryRunnerFail.manager.findOne(ItemMasterBatch, { where: { id: String(batchId) } });
+        if (batchFail) {
+          batchFail.status = 'rejected';
+          batchFail.errorSummary = err instanceof Error ? err.message : String(err);
+          await queryRunnerFail.manager.save(batchFail);
+        }
+        await queryRunnerFail.commitTransaction();
+      } catch(e) {
+        await queryRunnerFail.rollbackTransaction();
+      } finally {
+        await queryRunnerFail.release();
+      }
+
+      console.error('Job error', err);
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async getBatch(id: number) {
+    const batch = await this.batchRepo.findOne({ where: { id: String(id) } });
+    if (!batch) throw new NotFoundException();
+    return batch;
+  }
+
+  async publishBatch(batchId: number, userId: string, ip?: string, userAgent?: string) {
+    const batch = await this.batchRepo.findOneBy({ id: String(batchId) });
+    if (!batch) throw new NotFoundException('Batch not found');
+    if (batch.status === 'published' || batch.status === 'rejected') {
+      throw new BadRequestException('Batch is not in held state');
+    }
+
+    batch.status = 'published';
+    batch.publishedAt = new Date();
+    batch.publishedBy = userId;
+
+    await this.dataSource.transaction(async manager => {
+      await manager.save(batch);
+      await this.auditService.log({
+        userId, action: 'item_publish', entityType: 'item_master_batch', entityId: batchId, ip, userAgent, meta: {}
+      }, manager);
+    });
+
+    return this.getBatch(batchId);
+  }
+
+  async holdBatch(batchId: number, userId: string, ip?: string, userAgent?: string) {
+    const batch = await this.batchRepo.findOneBy({ id: String(batchId) });
+    if (!batch) throw new NotFoundException('Batch not found');
+    if (batch.status === 'held') return batch;
+
+    batch.status = 'held';
+    batch.publishedAt = null;
+    batch.publishedBy = null;
+
+    await this.dataSource.transaction(async manager => {
+      await manager.save(batch);
+      await this.auditService.log({
+        userId, action: 'item_hold', entityType: 'item_master_batch', entityId: batchId, ip, userAgent, meta: {}
+      }, manager);
+    });
+
+    return this.getBatch(batchId);
+  }
+}
