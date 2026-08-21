@@ -99,4 +99,4 @@ NestJS 11
 | `fixtures/daybook/EXPECTED.md` | Day Book numbers |
 | `fixtures/sales-register/EXPECTED.md` | Sales Register numbers |
 | `fixtures/search/GOLD.md` | Frozen search gold / typo / visibility set |
-| `S3_BRIEF.md`–`S22_EVIDENCE.md` | Historical work orders. Closed. |
+| `docs/history/S3_BRIEF.md`–`S22_EVIDENCE.md` | Historical work orders. Closed. Archived 2026-08-21. |
