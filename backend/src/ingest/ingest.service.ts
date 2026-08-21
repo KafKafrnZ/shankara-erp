@@ -68,25 +68,32 @@ export class IngestService {
         where: { fileSha256: sha256 },
         order: { uploadedAt: 'DESC' },
       });
-      const batchId = existingBatch ? existingBatch.id : 'unknown';
-      await this.auditService.log({
-        userId, action: 'upload', entityType: 'ingest_batch', entityId: batchId, ip, userAgent, meta: { sha256, duplicate: true },
-      });
+      if (existingBatch) {
+        await this.auditService.log({
+          userId, action: 'upload', entityType: 'ingest_batch', entityId: existingBatch.id, ip, userAgent, meta: { sha256, duplicate: true },
+        });
 
-      return {
-        batchId: Number(batchId),
-        status: 'duplicate',
-        duplicate: true,
-        sha256,
-        originalName: sourceFile.originalName,
-        bytes: Number(sourceFile.byteSize),
-      };
+        return {
+          batchId: Number(existingBatch.id),
+          status: 'duplicate',
+          duplicate: true,
+          sha256,
+          originalName: sourceFile.originalName,
+          bytes: Number(sourceFile.byteSize),
+        };
+      }
+      // source_file is shared across both pipelines (voucher and item
+      // master), so a hit here with no matching ingest_batch means these
+      // bytes were uploaded through the OTHER pipeline, not this one —
+      // it isn't a real duplicate from the voucher side. Fall through and
+      // process it as a fresh voucher batch, reusing the existing
+      // source_file/object-store entry rather than re-uploading the bytes.
     }
 
-    const stored = await this.objectStore.put(sha256, file.buffer, file.mimetype);
+    const storageKey = sourceFile ? sourceFile.storageKey : (await this.objectStore.put(sha256, file.buffer, file.mimetype)).key;
 
     // fetch from object store
-    const storedStream = await this.objectStore.get(stored.key);
+    const storedStream = await this.objectStore.get(storageKey);
     if (!storedStream) {
       throw new BadRequestException('Failed to retrieve file from storage');
     }
@@ -98,11 +105,13 @@ export class IngestService {
     await queryRunner.startTransaction();
 
     try {
-      sourceFile = this.sourceFileRepo.create({
-        sha256, storageKey: stored.key, originalName: file.originalname,
-        byteSize: stored.bytes.toString(), contentType: file.mimetype, uploadedBy: userId,
-      });
-      await queryRunner.manager.save(sourceFile);
+      if (!sourceFile) {
+        sourceFile = this.sourceFileRepo.create({
+          sha256, storageKey, originalName: file.originalname,
+          byteSize: file.buffer.length.toString(), contentType: file.mimetype, uploadedBy: userId,
+        });
+        await queryRunner.manager.save(sourceFile);
+      }
 
       // Steward is a global role (seed company_id is null) and may set any companyId.
       const batch = this.ingestBatchRepo.create({

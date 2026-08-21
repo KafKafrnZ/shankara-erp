@@ -4,8 +4,11 @@ import type { Request, Response } from 'express';
 import { Readable } from 'stream';
 import { Roles } from '../auth/roles.decorator';
 import { ItemMasterService } from './item-master.service';
+import { ParseIdPipe } from '../common/parse-id.pipe';
 
 type AuthedRequest = Request & { user: any };
+
+const ITEM_UPLOAD_EXTENSIONS = ['.xlsx'];
 
 @Controller('item-uploads')
 export class ItemUploadsController {
@@ -21,6 +24,17 @@ export class ItemUploadsController {
   ) {
     if (!file) {
       throw new BadRequestException('No file provided');
+    }
+
+    // Without this, any file at all (a PDF, a screenshot, a .txt) was hashed,
+    // stored and queued, only to fail deep inside the spreadsheet parser and
+    // surface to the user as "invalid signature: 0x73696874". Reject it here,
+    // in words that say what to do about it.
+    const ext = file.originalname.slice(file.originalname.lastIndexOf('.')).toLowerCase();
+    if (!ITEM_UPLOAD_EXTENSIONS.includes(ext)) {
+      throw new BadRequestException(
+        `"${file.originalname}" isn't a spreadsheet we can read. Please upload an Excel .xlsx workbook exported from Tally.`,
+      );
     }
 
     const stream = Readable.from(file.buffer);
@@ -42,8 +56,8 @@ export class ItemBatchesController {
 
   @Roles('steward', 'finance', 'branch')
   @Get(':id')
-  async getBatch(@Param('id') id: string, @Req() req: AuthedRequest) {
-    const batch = await this.itemMasterService.getBatch(Number(id));
+  async getBatch(@Param('id', ParseIdPipe) id: number, @Req() req: AuthedRequest) {
+    const batch = await this.itemMasterService.getBatch(id);
     if (req.user && (req.user.role === 'finance' || req.user.role === 'branch') && batch.status !== 'published') {
       throw new NotFoundException();
     }
@@ -53,27 +67,27 @@ export class ItemBatchesController {
   @Roles('steward')
   @Post(':id/publish')
   @HttpCode(200)
-  async publishBatch(@Param('id') id: string, @Req() req: AuthedRequest) {
-    return this.itemMasterService.publishBatch(Number(id), req.user.id, req.ip, req.headers['user-agent'] as string);
+  async publishBatch(@Param('id', ParseIdPipe) id: number, @Req() req: AuthedRequest) {
+    return this.itemMasterService.publishBatch(id, req.user.id, req.ip, req.headers['user-agent'] as string);
   }
 
   @Roles('steward')
   @Post(':id/hold')
   @HttpCode(200)
-  async holdBatch(@Param('id') id: string, @Req() req: AuthedRequest) {
-    return this.itemMasterService.holdBatch(Number(id), req.user.id, req.ip, req.headers['user-agent'] as string);
+  async holdBatch(@Param('id', ParseIdPipe) id: number, @Req() req: AuthedRequest) {
+    return this.itemMasterService.holdBatch(id, req.user.id, req.ip, req.headers['user-agent'] as string);
   }
 
   @Roles('steward')
   @Get(':id/skips')
-  async getSkips(@Param('id') id: string) {
-    return this.itemMasterService.getSkips(Number(id));
+  async getSkips(@Param('id', ParseIdPipe) id: number) {
+    return this.itemMasterService.getSkips(id);
   }
 
   @Roles('steward')
   @Post(':id/retry')
   @HttpCode(200)
-  async retryBatch(@Param('id') id: string, @Req() req: AuthedRequest) {
-    return this.itemMasterService.retryBatch(Number(id), req.user.id, req.ip, req.headers['user-agent'] as string);
+  async retryBatch(@Param('id', ParseIdPipe) id: number, @Req() req: AuthedRequest) {
+    return this.itemMasterService.retryBatch(id, req.user.id, req.ip, req.headers['user-agent'] as string);
   }
 }

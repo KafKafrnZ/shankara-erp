@@ -185,6 +185,18 @@ button {
 }
 
 .app-main {
+  /* position: relative (with z-index left at auto) is deliberate and the
+     whole trick here. Static in-flow content paints BEFORE positioned
+     z-index: 0 layers, so without this the ambient DotField canvas covered
+     real buttons, inputs and table rows. Making this positioned moves it
+     into the same paint step as the canvas, where tree order wins — and
+     the canvas is rendered first, so content lands on top.
+
+     Do NOT add a z-index here: that would create a stacking context and
+     trap descendants inside it. The item drawer (z-index: 90) has to be
+     able to rise above the sticky header (z-index: 40), and it can only do
+     that while this element stays out of the way. */
+  position: relative;
   flex: 1;
   padding: 24px 28px 48px;
 }
@@ -278,6 +290,22 @@ button {
   padding: 8px 10px;
   background: var(--surface);
   color: var(--ink);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.field input:hover,
+.field select:hover,
+.search-hero:hover,
+.search-compact:hover {
+  border-color: var(--sb-red-soft);
+}
+
+.field input:focus,
+.field select:focus,
+.search-compact:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(227, 6, 19, 0.12);
 }
 
 .pill {
@@ -347,6 +375,9 @@ th.num {
 }
 
 .login-card {
+  /* Same paint-order fix as .app-main, and same reason for leaving
+     z-index alone — see the note there. */
+  position: relative;
   width: 400px;
   color: var(--sb-white);
 }
@@ -492,6 +523,45 @@ th.num {
 
 /* ——— Results ——— */
 
+/* ——— Catalog: persistent search header ——— */
+
+.catalog-page {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.catalog-header {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 8px;
+}
+
+.catalog-title {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.catalog-search-form {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+}
+
+.catalog-search-input-wrap {
+  flex: 1;
+  max-width: 520px;
+}
+
+.catalog-hint {
+  color: var(--muted);
+  margin: 16px 0 0;
+}
+
 .results-search {
   display: flex;
   gap: 8px;
@@ -516,6 +586,25 @@ th.num {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 14px;
+  /* Grid/flex children default to min-width: auto, meaning they refuse to
+     shrink below their content's intrinsic width. A <select> sizes itself
+     to its LONGEST option ("NSTL ACCESSORIES & HARDWARE (1234)"), so
+     without this the dropdowns burst out of the rail and overlapped the
+     results table beside them. */
+  min-width: 0;
+  overflow: hidden;
+}
+
+.filter-rail .field,
+.filter-fields {
+  min-width: 0;
+}
+
+.filter-rail select,
+.filter-rail input {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .filter-rail h2 {
@@ -553,15 +642,17 @@ th.num {
 
 tr.clickable {
   cursor: pointer;
-  transition: background-color var(--transition-fast);
+  box-shadow: inset 3px 0 0 0 transparent;
+  transition: background-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 tr.clickable:hover {
-  background: #fafafa;
+  background: rgba(227, 6, 19, 0.05);
+  box-shadow: inset 3px 0 0 0 var(--accent);
 }
 
 tr.clickable:active {
-  background: #f0f0f0;
+  background: rgba(227, 6, 19, 0.09);
 }
 
 .particulars {
@@ -851,6 +942,8 @@ mark.search-hl {
 
   .app-header,
   .results-search,
+  .catalog-search-form,
+  .catalog-hint,
   .filter-rail,
   .pager,
   .row-actions,
@@ -860,6 +953,12 @@ mark.search-hl {
   .landing-filters,
   .recent {
     display: none !important;
+  }
+
+  /* The catalog results are a 2-column grid whose filter column is hidden
+     above; without this the table stays squeezed into the second track. */
+  .results-layout {
+    display: block;
   }
 
   .drawer {

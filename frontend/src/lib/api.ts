@@ -13,14 +13,20 @@ export const TOKEN_KEY = 'sb.accessToken';
 export class ApiError extends Error {
   readonly status: number;
   readonly payload: unknown;
+  /** The server's own error text, kept for logging/debugging — `message`
+   *  is what's shown to the user and may be a friendlier stand-in for this. */
+  readonly technicalMessage?: string;
 
-  constructor(status: number, message: string, payload?: unknown) {
+  constructor(status: number, message: string, payload?: unknown, technicalMessage?: string) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.payload = payload;
+    this.technicalMessage = technicalMessage;
   }
 }
+
+const CONTACT_HINT = 'contact your steward with what you were doing';
 
 export function isApiError(err: unknown): err is ApiError {
   return err instanceof ApiError;
@@ -43,7 +49,12 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers.set('Content-Type', 'application/json');
   }
 
-  const res = await fetch(path, { ...init, headers });
+  let res: Response;
+  try {
+    res = await fetch(path, { ...init, headers });
+  } catch {
+    throw new ApiError(0, `Can't reach the server right now. Check your connection and try again, or ${CONTACT_HINT} if this keeps happening.`);
+  }
 
   let payload: unknown = null;
   const text = await res.text();
@@ -72,6 +83,17 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   if (res.status === 429) {
     throw new ApiError(429, nestMessage(payload) || 'Too many attempts, wait a moment.', payload);
+  }
+
+  if (res.status >= 500) {
+    const raw = nestMessage(payload) || `Request failed (${res.status})`;
+    console.error(`[api] ${path} -> ${res.status}: ${raw}`);
+    throw new ApiError(
+      res.status,
+      `Something went wrong on our end — this wasn't caused by anything you did. Please try again, or ${CONTACT_HINT} if it keeps happening.`,
+      payload,
+      raw,
+    );
   }
 
   if (!res.ok) {

@@ -113,7 +113,12 @@ export const DotField: React.FC<DotFieldProps> = ({ variant, dotColor = '227, 6,
     // compete for attention with a button or input the user is actually
     // about to use; it should read as ambient texture, not something
     // "responding" to your hover on real controls.
-    const INTERACTIVE_SELECTOR = 'button, a, input, textarea, select, [role="button"], tr.clickable, label';
+    //
+    // Deliberately NOT [role="button"]: large custom-button containers
+    // (e.g. the chooser panels) carry that role for accessibility while
+    // wanting the glow to react across their whole background — only the
+    // specific small controls inside opt out, via .dot-suppress.
+    const INTERACTIVE_SELECTOR = 'button, a, input, textarea, select, tr.clickable, label, .dot-suppress';
     const onPointerMove = (e: MouseEvent) => {
       const target = e.target as Element | null;
       if (target && target.closest(INTERACTIVE_SELECTOR)) {

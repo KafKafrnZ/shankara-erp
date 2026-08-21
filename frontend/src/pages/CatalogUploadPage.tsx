@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { DragEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, isApiError } from '../lib/api.ts';
-import { describeItemSkip } from '../lib/item-skip-codes.ts';
+import { describeItemBatchError, describeItemSkip } from '../lib/item-skip-codes.ts';
 import { formatAsOf } from '../lib/format.ts';
 import { useAuth } from '../auth/useAuth.ts';
 
@@ -28,7 +28,7 @@ interface ItemBatch {
   uploadedAt: string;
 }
 
-const ACCEPT = '.csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel, application/zip';
+const ACCEPT = '.xlsx, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 function statusPill(status: string) {
   switch (status) {
@@ -131,6 +131,14 @@ export function CatalogUploadPage() {
       setFile(null);
       return;
     }
+    // Catch the wrong file type here rather than letting it upload and fail
+    // inside the parser — same check the voucher upload already does.
+    const name = f.name.toLowerCase();
+    if (!name.endsWith('.xlsx')) {
+      setFile(null);
+      setError(`"${f.name}" can't be read here. Please choose an Excel .xlsx workbook exported from Tally.`);
+      return;
+    }
     setFile(f);
     setError('');
     setUploadNote('');
@@ -225,7 +233,7 @@ export function CatalogUploadPage() {
   return (
     <div className="upload-page">
       <h1 className="page-title">Catalog Upload</h1>
-      <p className="muted page-lead">Item Master / Catalog export (.xlsx).</p>
+      <p className="muted page-lead">Item Master or Catalog export from Tally (.xlsx).</p>
 
       <form className="upload-form" onSubmit={(e) => void onUpload(e)}>
         <div
@@ -286,8 +294,8 @@ export function CatalogUploadPage() {
 
           {batch.status === 'rejected' && (
             <div className="banner banner-critical">
-              <p className="banner-title">File rejected</p>
-              {batch.errorSummary && <p>{batch.errorSummary}</p>}
+              <p className="banner-title">We couldn't read this file</p>
+              <p>{describeItemBatchError(batch.errorSummary)}</p>
               <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => void onRetry()}>
                 {busy ? 'Retrying…' : 'Retry'}
               </button>

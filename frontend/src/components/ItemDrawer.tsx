@@ -108,6 +108,14 @@ export function ItemDrawer({ itemCode, onClose }: Props) {
 
         {error && <p className="empty-copy">{error}</p>}
         {loading && !error && <p className="muted">Loading…</p>}
+        {/* The API returns [] (not a 404) for an unknown code, so without
+            this the drawer opened completely blank — no data, no message. */}
+        {!loading && !error && !current && (
+          <p className="empty-copy">
+            No details found for this item. It may have been removed from the catalog since this
+            list was loaded — try searching for it again.
+          </p>
+        )}
 
         {!loading && !error && current && (
           <div className="drawer-body">
