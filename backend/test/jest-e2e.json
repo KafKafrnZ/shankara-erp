@@ -4,6 +4,8 @@
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
   "setupFiles": ["<rootDir>/setup-e2e-env.ts"],
+  "transformIgnorePatterns": ["/node_modules/(?!pg-boss)"],
+  "moduleNameMapper": { "pg-boss": "<rootDir>/__mocks__/pg-boss.js" },
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
   }

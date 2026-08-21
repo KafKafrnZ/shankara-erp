@@ -55,12 +55,14 @@ export function CatalogUploadPage() {
   const [skipTotal, setSkipTotal] = useState(0);
   const [busy, setBusy] = useState(false);
   const [expandedRaw, setExpandedRaw] = useState<number | null>(null);
+  const [pollTimeout, setPollTimeout] = useState(false);
 
   const { user } = useAuth();
 
   useEffect(() => {
     if (!batchIdParam) {
       setBatch(null);
+      setPollTimeout(false);
       return;
     }
     loadBatch(Number(batchIdParam));
@@ -69,12 +71,20 @@ export function CatalogUploadPage() {
   useEffect(() => {
     let t: number;
     if (batch && batch.status === 'processing') {
+      const startedAt = Date.now();
       t = window.setInterval(() => {
+        if (Date.now() - startedAt > 120_000) {
+          clearInterval(t);
+          setPollTimeout(true);
+          return;
+        }
         loadBatch(Number(batch.id));
       }, 2000);
+    } else {
+      setPollTimeout(false);
     }
     return () => clearInterval(t);
-  }, [batch]);
+  }, [batch?.id, batch?.status]);
 
   const loadBatch = async (id: number) => {
     try {
@@ -133,6 +143,7 @@ export function CatalogUploadPage() {
     setUploading(true);
     setError('');
     setUploadNote('');
+    setPollTimeout(false);
     
     const formData = new FormData();
     formData.append('file', file);
@@ -219,8 +230,14 @@ export function CatalogUploadPage() {
             <h2>Batch {batch.id}</h2>
             {statusPill(batch.status)}
           </div>
-          {batch.status === 'processing' && (
+          {batch.status === 'processing' && !pollTimeout && (
             <p className="muted">Processing your file...</p>
+          )}
+          {batch.status === 'processing' && pollTimeout && (
+            <div className="banner banner-critical">
+              <p className="banner-title">Still processing after 2 minutes</p>
+              <p>This may indicate a problem. Refresh the page to check again, or contact your steward team.</p>
+            </div>
           )}
           {batch.status !== 'processing' && (
             <dl className="meta-grid">
