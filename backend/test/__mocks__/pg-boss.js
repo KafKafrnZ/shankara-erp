@@ -5,6 +5,7 @@ class PgBoss {
   on() {}
   async start() { return this; }
   async stop() {}
+  async createQueue() {}
   async send(name, data) {
     if (this.handlers[name]) {
       setTimeout(() => {

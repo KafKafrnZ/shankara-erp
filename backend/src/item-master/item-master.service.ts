@@ -45,6 +45,12 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
     this.boss.on('error', error => console.error(error));
 
     await this.boss.start();
+    // pg-boss v12 requires a queue to exist before .work()/.send() can use
+    // it — createQueue is idempotent (safe to call on every startup). The
+    // mocked pg-boss used in e2e tests (test/__mocks__/pg-boss.js) doesn't
+    // enforce this, which is why this was never caught by the test suite:
+    // it only ever failed against a real pg-boss instance.
+    await this.boss.createQueue('item-master-parse');
 
     await this.boss.work('item-master-parse', async (job) => {
       const { batchId } = (Array.isArray(job) ? job[0].data : (job as any).data) as { batchId: number };
@@ -70,6 +76,7 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
+    let committed = false;
     try {
       const existingBatch = await queryRunner.manager.findOne(ItemMasterBatch, { where: { fileSha256: sha256 } });
       if (existingBatch) {
@@ -113,8 +120,13 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
       }, queryRunner.manager);
 
       await queryRunner.commitTransaction();
+      committed = true;
 
-      // Enqueue background job
+      // Enqueue background job. This runs after commit, so if it throws,
+      // the batch row already exists as 'processing' — the catch block
+      // below must not try to roll back a transaction that's already
+      // committed (that throws its own, more confusing error and masks
+      // whatever actually went wrong here).
       await this.boss.send('item-master-parse', { batchId: Number(batch.id) });
 
       fs.unlinkSync(tmpPath);
@@ -127,7 +139,9 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
         originalName,
       };
     } catch (err) {
-      await queryRunner.rollbackTransaction();
+      if (!committed) {
+        await queryRunner.rollbackTransaction();
+      }
       if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
       throw err;
     } finally {
@@ -172,7 +186,13 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
           message: s.message,
           raw: s.raw,
         }));
-        await queryRunner.manager.save(skips);
+        // Chunked, not one bulk insert: a real file can produce tens of
+        // thousands of skip rows (~19,700 for the real MAIN MASTER sample
+        // file), and one unchunked multi-row INSERT for that many rows
+        // exceeds Postgres's 65,535-bound-parameters-per-query limit —
+        // confirmed live: this failed with "bind message has 52490
+        // parameter formats but 0 parameters" before this fix.
+        await queryRunner.manager.save(skips, { chunk: 1000 });
       }
 
       for (const item of parsed.items) {
@@ -205,7 +225,7 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
           if (currentRow.brand !== item.brand || currentRow.mainGroup !== item.mainGroup) {
              // Warn level audit
              await this.auditService.log({
-               userId: 'system', action: 'item_collision_warn', entityType: 'item_master_row', entityId: currentRow.id, meta: { oldBrand: currentRow.brand, newBrand: item.brand, oldGroup: currentRow.mainGroup, newGroup: item.mainGroup, itemCode: item.itemCode }
+               userId: null, action: 'item_collision_warn', entityType: 'item_master_row', entityId: currentRow.id, meta: { oldBrand: currentRow.brand, newBrand: item.brand, oldGroup: currentRow.mainGroup, newGroup: item.mainGroup, itemCode: item.itemCode }
              }, queryRunner.manager);
           }
 
@@ -227,7 +247,7 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
         await queryRunner.manager.save(batch);
       } else {
         await this.auditService.log({
-          userId: 'system', action: 'job_status_override_warn', entityType: 'item_master_batch', entityId: batchId, meta: { originalStatus: 'processing', newStatus: currentBatchStatus?.status }
+          userId: null, action: 'job_status_override_warn', entityType: 'item_master_batch', entityId: batchId, meta: { originalStatus: 'processing', newStatus: currentBatchStatus?.status }
         }, queryRunner.manager);
         // Only save counts and row stats, but don't overwrite status
         await queryRunner.manager.save(batch);
