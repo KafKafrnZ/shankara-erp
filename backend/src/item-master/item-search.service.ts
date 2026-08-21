@@ -36,11 +36,22 @@ export class ItemSearchService {
     const term = query.q?.trim();
     if (term) {
       const like = `%${escapeLike(term)}%`;
+      // Every ID-shaped field a user might type gets searched, not just the
+      // one chosen as item_code for a given sheet layout. The three layouts
+      // (SAP Item Master, Master Code, CP & Sani/Others) each pick a
+      // different column as the "primary" identifier — sap_item_code,
+      // alias, or a direct code column — so a code that's the primary
+      // identifier in one file is a secondary field in another. Searching
+      // all of them means the same query works regardless of which sheet
+      // an item came from.
       qb.andWhere(new Brackets(sqb => {
         sqb.where("row.item_code ILIKE :q ESCAPE '\\'", { q: like })
            .orWhere("row.item_name ILIKE :q ESCAPE '\\'", { q: like })
            .orWhere("row.catalogue_no ILIKE :q ESCAPE '\\'", { q: like })
-           .orWhere("row.brand ILIKE :q ESCAPE '\\'", { q: like });
+           .orWhere("row.brand ILIKE :q ESCAPE '\\'", { q: like })
+           .orWhere("row.alias ILIKE :q ESCAPE '\\'", { q: like })
+           .orWhere("row.sap_item_code ILIKE :q ESCAPE '\\'", { q: like })
+           .orWhere("row.hsn_description ILIKE :q ESCAPE '\\'", { q: like });
       }));
     }
 
