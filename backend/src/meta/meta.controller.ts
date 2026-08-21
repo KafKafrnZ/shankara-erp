@@ -9,4 +9,14 @@ export class MetaController {
   async getAsOf(@Req() req: any) {
     return this.metaService.getAsOf(req.user);
   }
+
+  @Get('vch-types')
+  async getVchTypes(@Req() req: any) {
+    return this.metaService.listVchTypes(req.user);
+  }
+
+  @Get('companies')
+  async getCompanies(@Req() req: any) {
+    return this.metaService.listCompanies(req.user);
+  }
 }

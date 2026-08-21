@@ -1,6 +1,6 @@
 # Shankara ERP — Frontend Build Spec
 
-**Status:** approved direction, ready to build. **Audience:** whoever (human or AI) implements `frontend/`. **Author context:** written by Dante (in-house IT, Shankara Buildpro) after a backend deep-audit and a UI-direction pass; a 5-screen visual mockup was built separately as a design reference — this document is the self-contained build spec and does not depend on that mockup being available to you.
+**Status:** implemented 2026-08-21. Human UI audit: accepted. **Audience:** whoever (human or AI) implements or changes `frontend/`. **Author context:** written by Dante (in-house IT, Shankara Buildpro) after a backend deep-audit and a UI-direction pass; a 5-screen visual mockup was built separately as a design reference — this document is the self-contained build spec and does not depend on that mockup being available to you.
 
 Read this whole document before writing code. It is meant to remove ambiguity, not to be skimmed.
 
@@ -289,16 +289,16 @@ Don't build these — they're either not backed by any endpoint, out of scope pe
 
 ## 8. Definition of done (v1)
 
-- [ ] `/login` works against a real backend (steward, finance, and branch test users all succeed; bad credentials show an inline error, not a crash).
-- [ ] Token persists across a page reload within a session (`sessionStorage`), and expiring/invalid tokens cleanly redirect to `/login` (test by clearing the token value to garbage and reloading).
-- [ ] `/` landing → search → results → open a voucher drawer → close it, all via mouse and via URL (paste a `/?q=...&voucher=123` URL directly and confirm it renders the same state).
-- [ ] Pagination on results actually pages (`offset`/`limit` wired correctly, not just cosmetic Prev/Next).
-- [ ] `/upload` is unreachable in the nav for a finance/branch test user, and returns a graceful "not authorized" state if navigated to directly (don't let a raw 403 JSON or a blank white screen show).
-- [ ] Uploading a real out-of-balance fixture file produces a disabled Publish button with visible debit/credit/difference and explanatory copy (this is the single most important behavior to get right — it's the one directly tied to a real backend fix this project shipped).
-- [ ] Uploading a file with reject rows shows the reject table with plain-language messages, not raw error codes.
-- [ ] All money values render as `₹` + Indian-grouped digits, right-aligned, tabular-nums, everywhere they appear.
-- [ ] Brand tokens/fonts/logo/header pattern match §4 exactly — no default browser blue links, no generic sans-serif fallback rendering in place of Inter, no recolored logo.
-- [ ] `npm run build` (in `frontend/`) and `npm run lint` both pass clean.
+- [x] `/login` works against a real backend (steward, finance, and branch test users all succeed; bad credentials show an inline error, not a crash).
+- [x] Token persists across a page reload within a session (`sessionStorage`), and expiring/invalid tokens cleanly redirect to `/login` (test by clearing the token value to garbage and reloading).
+- [x] `/` landing → search → results → open a voucher drawer → close it, all via mouse and via URL (paste a `/?q=...&voucher=123` URL directly and confirm it renders the same state).
+- [x] Pagination on results actually pages (`offset`/`limit` wired correctly, not just cosmetic Prev/Next).
+- [x] `/upload` is unreachable in the nav for a finance/branch test user, and returns a graceful "not authorized" state if navigated to directly (don't let a raw 403 JSON or a blank white screen show).
+- [x] Uploading a real out-of-balance fixture file produces a disabled Publish button with visible debit/credit/difference and explanatory copy (this is the single most important behavior to get right — it's the one directly tied to a real backend fix this project shipped).
+- [x] Uploading a file with reject rows shows the reject table with plain-language messages, not raw error codes.
+- [x] All money values render as `₹` + Indian-grouped digits, right-aligned, tabular-nums, everywhere they appear.
+- [x] Brand tokens/fonts/logo/header pattern match §4 exactly — no default browser blue links, no generic sans-serif fallback rendering in place of Inter, no recolored logo.
+- [x] `npm run build` (in `frontend/`) and `npm run lint` both pass clean.
 
 ---
 

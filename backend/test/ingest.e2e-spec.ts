@@ -322,4 +322,40 @@ describe('Ingest (e2e)', () => {
     const afterCount = await db.query(`SELECT count(*) as c FROM voucher WHERE vch_no LIKE 'INV/SR/%' AND valid_to IS NULL`);
     expect(afterCount[0].c).toBe(beforeCount[0].c);
   });
+
+  it('OUT_OF_BALANCE batch stays held and publish is 409', async () => {
+    const { tmp: csvPath } = generateUniqueCsv(
+      path.join(__dirname, '../../fixtures/daybook/sample-daybook.csv'),
+      (lines) => {
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].includes('12,48,500.00') && lines[i].includes('Sri Steel Traders')) {
+            lines[i] = lines[i].replace('12,48,500.00', '12,48,501.00');
+          }
+        }
+      },
+    );
+
+    const res = await request(app.getHttpServer())
+      .post('/api/uploads')
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .field('companyId', 'SHANKARA_HYD')
+      .attach('file', csvPath)
+      .expect(202);
+
+    expect(res.body.status).toBe('held');
+    expect(String(res.body.errorSummary || '')).toMatch(/^OUT_OF_BALANCE/);
+
+    const batchId = res.body.batchId;
+    const pub = await request(app.getHttpServer())
+      .post(`/api/batches/${batchId}/publish`)
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .expect(409);
+
+    expect(pub.body.message).toBe('OUT_OF_BALANCE');
+
+    const batch = await db.query(`SELECT status, published_at, error_summary FROM ingest_batch WHERE id = $1`, [batchId]);
+    expect(batch[0].status).toBe('held');
+    expect(batch[0].published_at).toBeNull();
+    expect(String(batch[0].error_summary)).toMatch(/^OUT_OF_BALANCE/);
+  });
 });

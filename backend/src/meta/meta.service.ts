@@ -1,9 +1,39 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import type { AuthUser } from '../auth/auth-user';
 
 @Injectable()
 export class MetaService {
   constructor(private readonly dataSource: DataSource) {}
+
+  async listVchTypes(user: AuthUser): Promise<{ items: string[] }> {
+    const params: unknown[] = [];
+    let sql = `
+      SELECT DISTINCT voucher.vch_type AS "vchType"
+      FROM voucher
+      JOIN ingest_batch ON voucher.batch_id = ingest_batch.id
+      WHERE voucher.valid_to IS NULL
+        AND voucher.is_deleted = false
+        AND ingest_batch.status = 'published'
+    `;
+    if (user.role === 'branch') {
+      sql += ` AND voucher.company_id = $1`;
+      params.push(user.companyId);
+    }
+    sql += ` ORDER BY 1`;
+    const rows = (await this.dataSource.query(sql, params)) as Array<{ vchType: string }>;
+    return { items: rows.map((r) => r.vchType).filter(Boolean) };
+  }
+
+  async listCompanies(user: AuthUser): Promise<{ items: string[] }> {
+    if (user.role === 'branch' && user.companyId) {
+      return { items: [user.companyId] };
+    }
+    const rows = (await this.dataSource.query(
+      `SELECT DISTINCT company_id AS "companyId" FROM ingest_batch WHERE company_id IS NOT NULL ORDER BY 1`,
+    )) as Array<{ companyId: string }>;
+    return { items: rows.map((r) => r.companyId).filter(Boolean) };
+  }
 
   async getAsOf(user: any) {
     let query = `SELECT MAX(published_at) as "asOf", MAX(id) as "batchId" FROM ingest_batch WHERE status = 'published'`;

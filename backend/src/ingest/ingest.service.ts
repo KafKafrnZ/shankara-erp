@@ -335,6 +335,9 @@ export class IngestService {
     if (batch.status === 'published' || batch.status === 'rejected') {
       throw new ConflictException('NOT_HELD');
     }
+    if (batch.errorSummary && batch.errorSummary.startsWith('OUT_OF_BALANCE')) {
+      throw new ConflictException('OUT_OF_BALANCE');
+    }
 
     batch.status = 'published';
     batch.publishedAt = new Date();
@@ -352,8 +355,7 @@ export class IngestService {
       const vouchers = await this.voucherRepo.find({
         where: { batchId: String(batchId), validTo: IsNull(), isDeleted: false }
       });
-      console.log(`[Indexer] found ${vouchers.length} vouchers for batch ${batchId}`);
-      
+
       const docs: IndexedVoucher[] = vouchers.map(v => {
         let vch_date = '';
         if (typeof v.vchDate === 'string') {
