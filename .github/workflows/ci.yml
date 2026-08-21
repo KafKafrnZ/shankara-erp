@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: shankara_admin
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: shankara_erp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      NODE_ENV: test
+      DATABASE_HOST: 127.0.0.1
+      DATABASE_PORT: 5432
+      DATABASE_USER: shankara_admin
+      DATABASE_PASSWORD: ci_password
+      DATABASE_NAME: shankara_erp
+      CORS_ORIGIN: http://localhost:5173
+      JWT_SECRET: ci_only_secret_not_used_anywhere_real_1234
+      JWT_EXPIRES_IN: 8h
+      STORAGE_DIR: ./var/uploads
+      MAX_UPLOAD_BYTES: 52428800
+      MAX_PARSE_ROWS: 500000
+      DEBIT_CREDIT_TOLERANCE: 0.05
+      SEED_STEWARD_PASSWORD: ci_steward_password
+      SEED_FINANCE_PASSWORD: ci_finance_password
+      SEED_BRANCH_PASSWORD: ci_branch_password
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npx tsc --noEmit -p tsconfig.build.json
+
+      # This codebase has a pre-existing lint backlog (~700 issues) unrelated to
+      # any single change. Gating CI on it would block unrelated PRs, so it's a
+      # visible, non-blocking signal until that backlog is cleaned up on purpose.
+      - name: Lint (non-blocking, see comment above)
+        run: npx eslint "{src,apps,libs,test}/**/*.ts" || true
+
+      - name: Unit tests
+        run: npx jest --testPathIgnorePatterns=e2e
+
+      - name: Run migrations
+        run: npm run migration:run
+
+      - name: Seed database
+        run: npm run seed
+
+      - name: e2e tests
+        run: npm run test:e2e -- --forceExit
+
+      - name: Build
+        run: npm run build
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build

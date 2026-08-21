@@ -1,5 +1,11 @@
 version: '3.8'
 
+# This only runs the data tier (Postgres/pgbouncer/redis/OpenSearch). The
+# backend and frontend run as their own processes on the host, not as
+# containers here — see backend's "npm run start:dev" / frontend's
+# "npm run dev" in the project README, and ops/Caddyfile + ops/README.md
+# for how they're wired up for a real (non-dev) deployment.
+
 services:
   postgres:
     image: postgres:16-alpine

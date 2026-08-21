@@ -1,0 +1,48 @@
+# Reverse proxy + TLS for an on-prem, LAN-only deployment — no public domain
+# or internet-facing server required.
+#
+# How the TLS here actually works: `tls internal` tells Caddy to issue
+# certificates from its own local certificate authority instead of asking a
+# public CA (like Let's Encrypt) for one — which would need this server to
+# be reachable from the public internet on port 80/443, and it isn't. This
+# gives every connection on the office LAN real encryption; the only cost is
+# that browsers don't trust Caddy's CA out of the box, so it needs to be
+# installed once per device (see ops/README.md's "Trusting the certificate"
+# section) — after that, a machine sees a normal green padlock, same as any
+# other HTTPS site, for as long as it keeps talking to this specific server.
+#
+# Set the hostname below to whatever your office actually resolves to this
+# server — either a real internal DNS record (ask whoever runs the office
+# network) or a per-machine hosts-file entry pointing at this server's LAN
+# IP. Swap ERP_HOSTNAME via an environment variable or just edit the line
+# directly; either works, Caddy re-reads this file on reload either way.
+{$ERP_HOSTNAME:erp.shankara.local} {
+	tls internal
+
+	# The backend (NestJS) runs directly on this same machine, not in a
+	# container — see docker-compose.yml's own comment: it only runs the
+	# data tier (Postgres/pgbouncer/redis/OpenSearch). Adjust the port if
+	# backend/.env's PORT isn't the default 3000.
+	handle /api/* {
+		reverse_proxy 127.0.0.1:3000
+	}
+
+	# The frontend is a static build (`cd frontend && npm run build` ->
+	# frontend/dist/), served directly by Caddy — no separate frontend
+	# server/process needed in production. try_files falls back to
+	# index.html for anything that isn't a real file, since this is a
+	# client-side-routed React app (react-router) and Caddy doesn't know
+	# about its routes.
+	handle {
+		root * /path/to/shankara-erp/frontend/dist
+		try_files {path} /index.html
+		file_server
+	}
+
+	encode gzip
+}
+
+# No separate HTTP->HTTPS redirect block needed: Caddy's automatic HTTPS
+# already redirects port 80 to 443 on its own for the named-host block
+# above (confirmed via `caddy validate` — "enabling automatic HTTP->HTTPS
+# redirects"). Adding a manual one here would just fight it.

@@ -16,6 +16,9 @@ build/
 backend/var/
 uploads/
 
+# Backup output (real database dumps — never commit)
+/backups/
+
 # Docker
 .docker/
 docker-data/
