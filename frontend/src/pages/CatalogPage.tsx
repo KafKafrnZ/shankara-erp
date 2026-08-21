@@ -82,6 +82,36 @@ export function CatalogPage() {
       .catch(console.error);
   }, []);
 
+  // Auto-focus the search box, and let "/" jump to it from anywhere on this
+  // page — same shortcut the voucher search (SearchPage.tsx) already has;
+  // this brings the catalog search bar to the same standard rather than
+  // leaving it as the one search box in the app without it.
+  useEffect(() => {
+    inputRef.current?.focus();
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'SELECT' && document.activeElement?.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Live search as you type, debounced — Enter/the Search button still work
+  // immediately for anyone who prefers that, this just means you don't have
+  // to press either: typing and pausing is enough. Skipped once draftQ
+  // already matches the committed q (nothing to do — covers the moment
+  // right after a search just ran and avoids re-firing on every render).
+  useEffect(() => {
+    if (draftQ === q) return;
+    const t = window.setTimeout(() => {
+      writeParams({ q: draftQ || null, offset: 0 });
+    }, 300);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftQ]);
+
   const runSearch = async (overrides?: { browse?: boolean }) => {
     setError('');
     setLoading(true);
@@ -148,6 +178,16 @@ export function CatalogPage() {
   const openItem = (code: string) => writeParams({ itemCode: code });
   const closeItem = () => writeParams({ itemCode: null });
 
+  const onSearchKeyDown = (e: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') {
+      if (draftQ) {
+        setDraftQ('');
+      } else {
+        inputRef.current?.blur();
+      }
+    }
+  };
+
   const onRowKey = (e: ReactKeyboardEvent, code: string) => {
     if (e.key === 'Enter') openItem(code);
   };
@@ -192,15 +232,19 @@ export function CatalogPage() {
       <div className="landing">
         <h1 className="landing-title">Item Catalog</h1>
         <form className="landing-form" onSubmit={onSubmit}>
-          <input
-            ref={inputRef}
-            className="search-hero"
-            value={draftQ}
-            onChange={(e) => setDraftQ(e.target.value)}
-            placeholder="Item code, name, catalogue no"
-            aria-label="Search catalog"
-            maxLength={200}
-          />
+          <div className="search-hero-wrap">
+            <input
+              ref={inputRef}
+              className="search-hero"
+              value={draftQ}
+              onChange={(e) => setDraftQ(e.target.value)}
+              onKeyDown={onSearchKeyDown}
+              placeholder="Item code, name, catalogue no"
+              aria-label="Search catalog"
+              maxLength={200}
+            />
+            <kbd className="search-shortcut-hint" aria-hidden="true">/</kbd>
+          </div>
           <div className="landing-actions">
             <button type="submit" className="btn btn-primary">Search</button>
             <button type="button" className="btn btn-ghost" onClick={() => writeParams({ browse: true, offset: 0 })}>
@@ -229,6 +273,7 @@ export function CatalogPage() {
           className="search-compact"
           value={draftQ}
           onChange={(e) => setDraftQ(e.target.value)}
+          onKeyDown={onSearchKeyDown}
           placeholder="Search catalog"
           aria-label="Search catalog"
           maxLength={200}

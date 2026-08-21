@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, OnModuleInit, OnModuleDestroy, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, IsNull } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -195,7 +195,50 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
         await queryRunner.manager.save(skips, { chunk: 1000 });
       }
 
+      // --- Batched insert path ---
+      // The original version of this loop did up to 3 sequential queries
+      // PER ROW (a SELECT to find the current version, an UPDATE to
+      // supersede it, an INSERT for the new one) — for the real 174,553-row
+      // MAIN MASTER file that's up to ~520,000 sequential round-trips in one
+      // transaction, which took several minutes and comfortably exceeded
+      // the frontend's 2-minute "still processing" timeout on a perfectly
+      // healthy upload. This does the same work in ~3 queries total (plus
+      // one small INSERT per chunk), not 3 per row.
+      //
+      // Step 1: if the same item_code appears more than once in this file,
+      // keep only the last occurrence. This matches the net effect of the
+      // original row-by-row code — each later occurrence in the same file
+      // would immediately supersede the previous one before either reached
+      // a caller — it just no longer creates a throwaway intermediate row
+      // for a "version" that only existed for milliseconds within a single
+      // import. Version history is about change across separate uploads,
+      // not sub-second flicker inside one.
+      const dedupedByCode = new Map<string, (typeof parsed.items)[number]>();
       for (const item of parsed.items) {
+        dedupedByCode.set(item.itemCode, item);
+      }
+      const dedupedItems = [...dedupedByCode.values()];
+
+      // Step 2: one query to fetch every currently-live row for every item
+      // code in this file, instead of one SELECT per row. `= ANY(:codes)`
+      // binds the whole list as a single array parameter — unlike
+      // TypeORM's `In()` operator, which binds one parameter per value and
+      // would itself blow past Postgres's 65,535-parameter limit for a
+      // file with more than ~65k distinct codes.
+      const itemCodes = dedupedItems.map(i => i.itemCode);
+      const currentRows = itemCodes.length > 0
+        ? await queryRunner.manager
+            .createQueryBuilder(ItemMasterRow, 'row')
+            .where('row.item_code = ANY(:codes)', { codes: itemCodes })
+            .andWhere('row.valid_to IS NULL')
+            .getMany()
+        : [];
+      const currentByCode = new Map(currentRows.map(r => [r.itemCode, r]));
+
+      const toSupersedeIds: string[] = [];
+      const toInsert: ItemMasterRow[] = [];
+
+      for (const item of dedupedItems) {
         const fingerprintData = {
           layoutKey: item.layoutKey,
           itemCode: item.itemCode,
@@ -212,33 +255,48 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
         };
         const fingerprint = crypto.createHash('sha256').update(JSON.stringify(fingerprintData)).digest('hex');
 
-        const currentRow = await queryRunner.manager.findOne(ItemMasterRow, {
-          where: { itemCode: item.itemCode, validTo: IsNull() },
-          order: { id: 'DESC' }
-        });
+        const currentRow = currentByCode.get(item.itemCode);
 
         if (currentRow) {
           if (currentRow.fingerprint === fingerprint) {
-            continue; // No-op
-          }
-          
-          if (currentRow.brand !== item.brand || currentRow.mainGroup !== item.mainGroup) {
-             // Warn level audit
-             await this.auditService.log({
-               userId: null, action: 'item_collision_warn', entityType: 'item_master_row', entityId: currentRow.id, meta: { oldBrand: currentRow.brand, newBrand: item.brand, oldGroup: currentRow.mainGroup, newGroup: item.mainGroup, itemCode: item.itemCode }
-             }, queryRunner.manager);
+            continue; // unchanged since the last publish — no-op
           }
 
-          currentRow.validTo = new Date();
-          await queryRunner.manager.save(currentRow);
+          if (currentRow.brand !== item.brand || currentRow.mainGroup !== item.mainGroup) {
+            // Collision warnings stay per-occurrence (not batched) — real
+            // files trigger this rarely (it fires only when a code's
+            // brand/group actually changed), so it doesn't reintroduce the
+            // per-row cost the rest of this rewrite removes.
+            await this.auditService.log({
+              userId: null, action: 'item_collision_warn', entityType: 'item_master_row', entityId: currentRow.id, meta: { oldBrand: currentRow.brand, newBrand: item.brand, oldGroup: currentRow.mainGroup, newGroup: item.mainGroup, itemCode: item.itemCode }
+            }, queryRunner.manager);
+          }
+
+          toSupersedeIds.push(currentRow.id);
         }
 
-        const newRow = this.rowRepo.create({
+        toInsert.push(this.rowRepo.create({
           batchId: batch.id,
           ...item,
           fingerprint,
-        });
-        await queryRunner.manager.save(newRow);
+        }));
+      }
+
+      // Step 3: one bulk UPDATE to supersede every replaced row, instead of
+      // one UPDATE per row. Same `= ANY()` array-bind reasoning as above.
+      if (toSupersedeIds.length > 0) {
+        await queryRunner.manager
+          .createQueryBuilder()
+          .update(ItemMasterRow)
+          .set({ validTo: new Date() })
+          .where('id = ANY(:ids)', { ids: toSupersedeIds })
+          .execute();
+      }
+
+      // Step 4: chunked bulk insert (same pattern as the skips insert
+      // above) instead of one INSERT per row.
+      if (toInsert.length > 0) {
+        await queryRunner.manager.save(toInsert, { chunk: 500 });
       }
 
       const currentBatchStatus = await queryRunner.manager.findOne(ItemMasterBatch, { where: { id: String(batchId) }, select: { status: true } });

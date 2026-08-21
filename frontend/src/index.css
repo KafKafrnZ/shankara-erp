@@ -410,8 +410,33 @@ th.num {
 
 .search-hero {
   width: 100%;
-  padding: 14px 16px;
+  padding: 14px 44px 14px 16px;
   font-size: 16px;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.search-hero:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(227, 6, 19, 0.12);
+}
+
+.search-hero-wrap {
+  position: relative;
+}
+
+.search-shortcut-hint {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 2px 7px;
+  pointer-events: none;
 }
 
 .landing-actions {
