@@ -41,6 +41,9 @@ export class MetaService {
     if (user.role === 'branch') {
       query += ` AND company_id = $1`;
       params.push(user.companyId);
+    } else if (user.role === 'finance' && user.companyId) {
+      query += ` AND company_id = $1`;
+      params.push(user.companyId);
     }
     
     // The max() needs a bit more care to also get the matching batchId.
@@ -50,7 +53,7 @@ export class MetaService {
       FROM ingest_batch
       WHERE status = 'published'
     `;
-    if (user.role === 'branch') {
+    if (user.role === 'branch' || (user.role === 'finance' && user.companyId)) {
       fullQuery += ` AND company_id = $1`;
     }
     fullQuery += ` ORDER BY published_at DESC NULLS LAST, id DESC LIMIT 1`;

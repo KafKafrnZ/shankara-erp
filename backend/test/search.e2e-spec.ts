@@ -6,6 +6,7 @@ import { DataSource } from 'typeorm';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import * as bcrypt from 'bcrypt';
 
 describe('Search & Vouchers (e2e)', () => {
   jest.setTimeout(30000);
@@ -125,7 +126,7 @@ describe('Search & Vouchers (e2e)', () => {
       .set('Authorization', `Bearer ${financeToken}`)
       .send({ q: uniq })
       .expect(200);
-    
+
     expect(res.body.total).toBeGreaterThanOrEqual(1);
     expect(res.body.hits.slice(0, 3).some((h: any) => h.vchNo.includes(uniq))).toBe(true);
   });
@@ -160,7 +161,7 @@ describe('Search & Vouchers (e2e)', () => {
       .set('Authorization', `Bearer ${financeToken}`)
       .send({ q: 'Sri Steel' })
       .expect(200);
-    
+
     expect(res.body.hits.some((h: any) => h.partyName === 'Sri Steel Traders')).toBe(true);
   });
 
@@ -187,7 +188,7 @@ describe('Search & Vouchers (e2e)', () => {
       .set('Authorization', `Bearer ${financeToken}`)
       .send({ q: uniq })
       .expect(200);
-    
+
     expect(res2.body.total).toBe(0);
   });
 
@@ -227,8 +228,15 @@ describe('Search & Vouchers (e2e)', () => {
 
     const { batchId: batchB } = await uploadSample('SHANKARA_HYD', (lines) => {
       for (let i = 0; i < lines.length; i++) {
+        // Bump both a debit and a credit line by the same amount so the
+        // voucher's fingerprint changes (forcing supersession) while the
+        // batch stays balanced and publishable (OUT_OF_BALANCE is a hard
+        // block on /publish).
         if (lines[i].includes('12,48,500.00') && lines[i].includes('Sri Steel Traders')) {
           lines[i] = lines[i].replace('12,48,500.00', '12,48,501.00');
+        }
+        if (lines[i].includes('10,23,770.00')) {
+          lines[i] = lines[i].replace('10,23,770.00', '10,23,771.00');
         }
       }
     }, uniq);
@@ -276,6 +284,50 @@ describe('Search & Vouchers (e2e)', () => {
       .expect(404);
   });
 
+  it('company-scoped finance user only sees their own company', async () => {
+    const scopedEmail = `finance-scoped-${Date.now()}-${Math.floor(Math.random() * 1000)}@shankara.local`;
+    const scopedPassword = `ScopedFinance!${Date.now()}`;
+    const hash = await bcrypt.hash(scopedPassword, 10);
+    await db.query(
+      `INSERT INTO app_user (email, password_hash, display_name, role, company_id)
+       VALUES ($1, $2, 'Scoped Finance', 'finance', 'SHANKARA_HYD')`,
+      [scopedEmail, hash]
+    );
+    const loginRes = await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ email: scopedEmail, password: scopedPassword })
+      .expect(200);
+    const scopedFinanceToken = loginRes.body.accessToken;
+
+    // Voucher published under a different company must stay invisible.
+    const { batchId: otherBatch, uniq: otherUniq } = await uploadSample('OTHER_CO');
+    await request(app.getHttpServer())
+      .post(`/api/batches/${otherBatch}/publish`)
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .expect(200);
+
+    const otherRes = await request(app.getHttpServer())
+      .post('/api/search')
+      .set('Authorization', `Bearer ${scopedFinanceToken}`)
+      .send({ q: otherUniq })
+      .expect(200);
+    expect(otherRes.body.total).toBe(0);
+
+    // Voucher published under their own company must still be visible.
+    const { batchId: ownBatch, uniq: ownUniq } = await uploadSample('SHANKARA_HYD');
+    await request(app.getHttpServer())
+      .post(`/api/batches/${ownBatch}/publish`)
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .expect(200);
+
+    const ownRes = await request(app.getHttpServer())
+      .post('/api/search')
+      .set('Authorization', `Bearer ${scopedFinanceToken}`)
+      .send({ q: ownUniq })
+      .expect(200);
+    expect(ownRes.body.total).toBeGreaterThanOrEqual(1);
+  });
+
   it('as-of is null then set after publish', async () => {
     const { batchId } = await uploadSample();
     await request(app.getHttpServer())
@@ -293,8 +345,8 @@ describe('Search & Vouchers (e2e)', () => {
 
   it('search and voucher_open and publish and unpublish are audited', async () => {
     const audits = await db.query(`
-      SELECT action FROM audit_event 
-      WHERE action IN ('publish', 'unpublish', 'search', 'voucher_open') 
+      SELECT action FROM audit_event
+      WHERE action IN ('publish', 'unpublish', 'search', 'voucher_open')
       ORDER BY id DESC LIMIT 50
     `);
     const actions = audits.map((a: any) => a.action);
@@ -359,7 +411,7 @@ describe('Search & Vouchers (e2e)', () => {
 
     const hit1 = search1.body.hits.find((h: any) => h.vchNo === 'INV/SR/1-' + uniq);
     expect(hit1.vchDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    
+
     // Day Book 11820 still in hit 1-3
     const { batchId: dbBatch, uniq: dbUniq } = await uploadSample();
     await request(app.getHttpServer())

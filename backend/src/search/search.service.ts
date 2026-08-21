@@ -42,6 +42,9 @@ export class SearchService {
     if (user.role === 'branch') {
       asOfQuery += ` AND company_id = $1`;
       asOfParams.push(user.companyId);
+    } else if (user.role === 'finance' && user.companyId) {
+      asOfQuery += ` AND company_id = $1`;
+      asOfParams.push(user.companyId);
     }
     const asOfRes = await this.dataSource.query(asOfQuery, asOfParams);
     return asOfRes[0]?.asOf ? new Date(asOfRes[0].asOf).toISOString() : null;
@@ -53,6 +56,9 @@ export class SearchService {
     let paramIdx = 1;
 
     if (user.role === 'branch') {
+      whereSql += ` AND voucher.company_id = $${paramIdx++}`;
+      params.push(user.companyId);
+    } else if (user.role === 'finance' && user.companyId) {
       whereSql += ` AND voucher.company_id = $${paramIdx++}`;
       params.push(user.companyId);
     }

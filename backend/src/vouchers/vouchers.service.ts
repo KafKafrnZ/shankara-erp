@@ -20,6 +20,9 @@ export class VouchersService {
     if (user.role === 'branch') {
       query += ` AND v.company_id = $2`;
       params.push(user.companyId);
+    } else if (user.role === 'finance' && user.companyId) {
+      query += ` AND v.company_id = $2`;
+      params.push(user.companyId);
     }
 
     const res = await this.dataSource.query(query, params);

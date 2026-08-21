@@ -71,10 +71,10 @@ describe('Ingest (e2e)', () => {
 
     expect(res.body.status).toBe('held');
     const batchId = res.body.batchId;
-    
+
     const vouchers = await db.query(`SELECT * FROM voucher WHERE batch_id = $1 AND valid_to IS NULL`, [batchId]);
     expect(vouchers.length).toBe(2);
-    
+
     const lines = await db.query(`SELECT * FROM voucher_line WHERE voucher_id IN ($1, $2)`, [vouchers[0].id, vouchers[1].id]);
     expect(lines.length).toBe(6);
 
@@ -104,7 +104,7 @@ describe('Ingest (e2e)', () => {
 
   it('same sha256 second ingest does not duplicate vouchers', async () => {
     const { tmp: csvPath, uniq } = generateUniqueCsv(path.join(__dirname, '../../fixtures/daybook/sample-daybook.csv'));
-    
+
     await request(app.getHttpServer())
       .post('/api/uploads')
       .set('Authorization', `Bearer ${stewardToken}`)
@@ -130,7 +130,7 @@ describe('Ingest (e2e)', () => {
   it('changed file same vch key versions the row', async () => {
     // Generate a fixed uniq for this test
     const testUniq = 'TEST_VER_' + Date.now().toString() + Math.floor(Math.random() * 1000);
-    
+
     // Original upload
     const { tmp: origCsvPath } = generateUniqueCsv(path.join(__dirname, '../../fixtures/daybook/sample-daybook.csv'), () => {}, testUniq);
     await request(app.getHttpServer())
@@ -157,7 +157,7 @@ describe('Ingest (e2e)', () => {
       .expect(202);
 
     const afterVouchers = await db.query(`
-      SELECT * FROM voucher 
+      SELECT * FROM voucher
       WHERE vch_type = 'Sales' AND company_id = 'SHANKARA_HYD' AND vch_no = $1
       ORDER BY created_at DESC LIMIT 5
     `, ['INV/HYD/' + testUniq]);
@@ -197,13 +197,41 @@ describe('Ingest (e2e)', () => {
       .expect(202);
 
     expect(res.body.status).toBe('held');
-    
+
     const rejects = await db.query(`SELECT * FROM ingest_reject WHERE batch_id = $1`, [res.body.batchId]);
     expect(rejects.length).toBeGreaterThan(0);
     expect(rejects[0].code).toBe('UNPARSEABLE_AMOUNT');
 
     const vouchers = await db.query(`SELECT * FROM voucher WHERE batch_id = $1`, [res.body.batchId]);
     expect(vouchers.length).toBe(2);
+  });
+
+  it('out-of-balance batch stays held and publish is blocked', async () => {
+    const { tmp: csvPath } = generateUniqueCsv(path.join(__dirname, '../../fixtures/daybook/sample-daybook.csv'), (lines) => {
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].includes('12,48,500.00') && lines[i].includes('Sri Steel Traders')) {
+          lines[i] = lines[i].replace('12,48,500.00', '12,48,501.00');
+        }
+      }
+    });
+
+    const res = await request(app.getHttpServer())
+      .post('/api/uploads')
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .field('companyId', 'SHANKARA_HYD')
+      .attach('file', csvPath)
+      .expect(202);
+
+    expect(res.body.status).toBe('held');
+    expect(res.body.errorSummary).toMatch(/^OUT_OF_BALANCE/);
+
+    await request(app.getHttpServer())
+      .post(`/api/batches/${res.body.batchId}/publish`)
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .expect(409);
+
+    const b = await db.query(`SELECT status FROM ingest_batch WHERE id = $1`, [res.body.batchId]);
+    expect(b[0].status).toBe('held');
   });
 
   it('zero vouchers after skip totals rejects batch', async () => {
@@ -283,7 +311,7 @@ describe('Ingest (e2e)', () => {
 
     expect(res.body.status).toBe('held');
     const batchId = res.body.batchId;
-    
+
     const batch = await db.query(`SELECT * FROM ingest_batch WHERE id = $1`, [batchId]);
     expect(batch[0].published_at).toBeNull();
     expect(batch[0].report_type).toBe('SALES_REGISTER');
