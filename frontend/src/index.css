@@ -875,3 +875,113 @@ mark.search-hl {
     padding: 0;
   }
 }
+
+/* ——— Split chooser landing ——— */
+
+.chooser-page {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+}
+
+.chooser-panel {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  overflow: hidden;
+  transition: flex-grow var(--transition-base);
+}
+
+.chooser-panel-red {
+  background: var(--sb-red);
+}
+
+.chooser-panel-black {
+  background: var(--sb-ink);
+}
+
+.chooser-panel:hover,
+.chooser-panel:focus-visible {
+  flex-grow: 1.08;
+}
+
+.chooser-panel:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: -6px;
+}
+
+.chooser-panel-content {
+  position: relative;
+  z-index: 1;
+  max-width: 380px;
+  padding: 0 40px;
+  text-align: center;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.chooser-panel-content h2 {
+  font-size: 30px;
+  font-weight: 700;
+  margin: 8px 0 0;
+  letter-spacing: -0.01em;
+}
+
+.chooser-panel-content p {
+  font-size: 15px;
+  opacity: 0.85;
+  margin: 0;
+  line-height: 1.55;
+}
+
+.chooser-cta {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 10px 20px;
+  border-radius: var(--radius);
+  font-weight: 600;
+  font-size: 14px;
+  transition: transform var(--transition-fast);
+}
+
+.chooser-cta-dark {
+  background: var(--sb-ink);
+}
+
+.chooser-cta-red {
+  background: var(--sb-red);
+}
+
+.chooser-panel:hover .chooser-cta,
+.chooser-panel:focus-visible .chooser-cta {
+  transform: scale(1.05);
+}
+
+.chooser-divider {
+  position: relative;
+  width: 3px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.9);
+  z-index: 2;
+  box-shadow: 0 0 20px 3px rgba(255, 255, 255, 0.55);
+  animation: chooser-divider-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes chooser-divider-pulse {
+  0%, 100% { opacity: 0.6; box-shadow: 0 0 14px 2px rgba(255, 255, 255, 0.4); }
+  50% { opacity: 1; box-shadow: 0 0 30px 6px rgba(255, 255, 255, 0.85); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chooser-divider {
+    animation: none;
+    opacity: 0.85;
+  }
+}

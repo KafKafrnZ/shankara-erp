@@ -331,17 +331,17 @@ export function CatalogPage() {
                       <td>
                         <div className="particulars">
                           <span className="party">{highlight(hit.itemName, q)}</span>
-                          {hit.catalogueNo && (
-                            <span className="narration">Cat no: {highlight(hit.catalogueNo, q)}</span>
-                          )}
+                          <span className="narration">
+                            {hit.catalogueNo ? <>Cat no: {highlight(hit.catalogueNo, q)}</> : '—'}
+                          </span>
                         </div>
                       </td>
-                      <td>{highlight(hit.brand, q)}</td>
+                      <td>{hit.brand ? highlight(hit.brand, q) : '—'}</td>
                       <td>
-                        {hit.mainGroup}
+                        {hit.mainGroup ? hit.mainGroup : '—'}
                         {hit.subGroup && ` / ${hit.subGroup}`}
                       </td>
-                      <td>{hit.uom}</td>
+                      <td>{hit.uom || '—'}</td>
                     </tr>
                   ))}
                 </tbody>

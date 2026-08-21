@@ -1,21 +1,33 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth.ts';
 import { BrandLogo } from '../components/BrandLogo.tsx';
 import { isApiError } from '../lib/api.ts';
 import { DotField } from '../components/DotField.tsx';
 
+// Only ever trust `next` as an in-app path — a bare "/..." that isn't
+// protocol-relative ("//evil.com" is a path by that same rule, so guard
+// against it explicitly). Never navigate to whatever a URL query param
+// says verbatim; that's an open-redirect waiting to happen.
+function safeNextPath(raw: string | null): string {
+  if (!raw) return '/';
+  if (raw.startsWith('/') && !raw.startsWith('//')) return raw;
+  return '/';
+}
+
 export function LoginPage() {
   const { user, loading, login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const nextPath = safeNextPath(searchParams.get('next'));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   if (!loading && user) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={nextPath} replace />;
   }
 
   const onSubmit = async (e: FormEvent) => {
@@ -24,7 +36,7 @@ export function LoginPage() {
     setSubmitting(true);
     try {
       await login(email, password);
-      navigate('/', { replace: true });
+      navigate(nextPath, { replace: true });
     } catch (err) {
       if (isApiError(err) && err.status === 401) {
         setError('Invalid credentials');

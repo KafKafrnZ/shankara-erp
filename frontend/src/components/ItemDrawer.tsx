@@ -114,27 +114,27 @@ export function ItemDrawer({ itemCode, onClose }: Props) {
             <dl className="meta-grid">
               <div>
                 <dt>Catalogue No</dt>
-                <dd>{current.catalogueNo || '-'}</dd>
+                <dd>{current.catalogueNo || '—'}</dd>
               </div>
               <div>
                 <dt>SAP Item Code</dt>
-                <dd>{current.sapItemCode || '-'}</dd>
+                <dd>{current.sapItemCode || '—'}</dd>
               </div>
               <div>
                 <dt>Main Group</dt>
-                <dd>{current.mainGroup || '-'}</dd>
+                <dd>{current.mainGroup || '—'}</dd>
               </div>
               <div>
                 <dt>Sub Group</dt>
-                <dd>{current.subGroup || '-'}</dd>
+                <dd>{current.subGroup || '—'}</dd>
               </div>
               <div>
                 <dt>UOM</dt>
-                <dd>{current.uom || '-'}</dd>
+                <dd>{current.uom || '—'}</dd>
               </div>
               <div>
                 <dt>Alias</dt>
-                <dd>{current.alias || '-'}</dd>
+                <dd>{current.alias || '—'}</dd>
               </div>
               {current.hsnDescription && (
                 <div className="meta-span">

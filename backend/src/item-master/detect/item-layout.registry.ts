@@ -11,6 +11,18 @@ function matchHeaders(actual: any[], expected: string[]): boolean {
   return expected.every(exp => normActual.includes(exp));
 }
 
+// Some real exports use a literal "-" (or similar) as an end-of-data /
+// separator marker, not an actual value — confirmed live: a real row in
+// the TILES sample file had item code, item name, main group, sub group,
+// and UOM all literally "-", and was silently accepted as a real catalog
+// item before this check existed. Treat that the same as genuinely empty.
+function isPlaceholderValue(v: any): boolean {
+  if (v === null || v === undefined) return true;
+  const s = String(v).trim();
+  if (s === '') return true;
+  return /^[-–—.]+$/.test(s);
+}
+
 // 1. SAP Item Master Detector
 export const sapItemMasterDetector: ItemLayoutDetector = {
   key: 'sap_item_master_v1',
@@ -33,10 +45,10 @@ export const sapItemMasterDetector: ItemLayoutDetector = {
     const alias = row[columns['alias']];
 
     const itemCode = sapItemCode || catalogueNo;
-    if (!itemCode) {
+    if (isPlaceholderValue(itemCode)) {
       return { skip: true, reason: 'Missing stable identifier (SAP Item Code / Catalogue No)', code: 'MISSING_ITEM_CODE' };
     }
-    if (!itemName) {
+    if (isPlaceholderValue(itemName)) {
       return { skip: true, reason: 'Missing item name', code: 'MISSING_ITEM_NAME' };
     }
 
@@ -74,10 +86,10 @@ export const masterCodeDetector: ItemLayoutDetector = {
     const hsnDescription = row[columns['hsn description']];
 
     const itemCode = alias || catalogueNo;
-    if (!itemCode) {
+    if (isPlaceholderValue(itemCode)) {
       return { skip: true, reason: 'Missing stable identifier (Alias / Catalogue No)', code: 'MISSING_ITEM_CODE' };
     }
-    if (!itemName) {
+    if (isPlaceholderValue(itemName)) {
       return { skip: true, reason: 'Missing item name', code: 'MISSING_ITEM_NAME' };
     }
 
@@ -117,10 +129,10 @@ export const cpSaniOthersDetector: ItemLayoutDetector = {
     const hsnDescription = row[columns['hsn description']];
 
     const itemCode = directCode || alias;
-    if (!itemCode) {
+    if (isPlaceholderValue(itemCode)) {
       return { skip: true, reason: 'Missing stable identifier (Col 0 / Alias)', code: 'MISSING_ITEM_CODE' };
     }
-    if (!itemName) {
+    if (isPlaceholderValue(itemName)) {
       return { skip: true, reason: 'Missing item name', code: 'MISSING_ITEM_NAME' };
     }
 

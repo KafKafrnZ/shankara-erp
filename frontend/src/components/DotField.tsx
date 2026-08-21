@@ -2,11 +2,21 @@ import React, { useEffect, useRef } from 'react';
 
 interface DotFieldProps {
   variant: 'light' | 'dark';
+  /** RGB triplet, e.g. '227, 6, 19' (brand red, the default) or '0, 0, 0' for black dots. */
+  dotColor?: string;
+  /**
+   * 'viewport' (default): fixed, covers the whole screen — used behind the
+   * app shell / login. 'container': absolute, fills whatever positioned
+   * ancestor it's placed in — used for a single half of a split panel,
+   * where each half needs its own independent dot field, not one field
+   * shared across the whole viewport.
+   */
+  fill?: 'viewport' | 'container';
 }
 
-export const DotField: React.FC<DotFieldProps> = ({ variant }) => {
+export const DotField: React.FC<DotFieldProps> = ({ variant, dotColor = '227, 6, 19', fill = 'viewport' }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -18,10 +28,8 @@ export const DotField: React.FC<DotFieldProps> = ({ variant }) => {
     const REACTIVE_RADIUS = 160;
     const MAX_SCALE = 2.5;
     const MAX_OPACITY = 0.55;
-    
-    // Read brand red or fallback
+
     const BASE_OPACITY = variant === 'dark' ? 0.14 : 0.08;
-    
 
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -29,28 +37,34 @@ export const DotField: React.FC<DotFieldProps> = ({ variant }) => {
     let height = 0;
     let columns = 0;
     let rows = 0;
-    
+
     let pointerX = -1000;
     let pointerY = -1000;
     let animFrame: number;
-    
+
     const resize = () => {
-      width = window.innerWidth;
-      height = window.innerHeight;
+      // Measure the canvas's own rendered box, not the window — this is
+      // what makes the same component work both as a full-viewport field
+      // (fill="viewport", sized by CSS to 100vw/100vh) and as one half of
+      // a split panel (fill="container", sized by its parent).
+      const rect = canvas.getBoundingClientRect();
+      width = rect.width;
+      height = rect.height;
       const dpr = window.devicePixelRatio || 1;
-      
+
       canvas.width = width * dpr;
       canvas.height = height * dpr;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(dpr, dpr);
-      
+
       columns = Math.ceil(width / SPACING) + 1;
       rows = Math.ceil(height / SPACING) + 1;
-      
+
       if (prefersReducedMotion) {
         draw(true);
       }
     };
-    
+
     let resizeTimer: any;
     const onResize = () => {
       clearTimeout(resizeTimer);
@@ -64,7 +78,7 @@ export const DotField: React.FC<DotFieldProps> = ({ variant }) => {
         for (let j = 0; j < rows; j++) {
           const x = i * SPACING;
           const y = j * SPACING;
-          
+
           let r = BASE_RADIUS;
           let alpha = BASE_OPACITY;
 
@@ -72,7 +86,7 @@ export const DotField: React.FC<DotFieldProps> = ({ variant }) => {
             const dx = x - pointerX;
             const dy = y - pointerY;
             const dist = Math.sqrt(dx * dx + dy * dy);
-            
+
             if (dist < REACTIVE_RADIUS) {
               const t = Math.max(0, 1 - dist / REACTIVE_RADIUS);
               const factor = t * t * (3 - 2 * t); // smoothstep
@@ -83,8 +97,7 @@ export const DotField: React.FC<DotFieldProps> = ({ variant }) => {
 
           ctx.beginPath();
           ctx.arc(x, y, r, 0, Math.PI * 2);
-          // Set color with alpha
-          ctx.fillStyle = `rgba(227, 6, 19, ${alpha})`;
+          ctx.fillStyle = `rgba(${dotColor}, ${alpha})`;
           ctx.fill();
         }
       }
@@ -94,17 +107,34 @@ export const DotField: React.FC<DotFieldProps> = ({ variant }) => {
       }
     };
 
+    // Only react to the pointer over plain background — never over anything
+    // clickable or typeable. The canvas already can't intercept clicks
+    // (pointer-events: none), but the reactive glow itself shouldn't
+    // compete for attention with a button or input the user is actually
+    // about to use; it should read as ambient texture, not something
+    // "responding" to your hover on real controls.
+    const INTERACTIVE_SELECTOR = 'button, a, input, textarea, select, [role="button"], tr.clickable, label';
     const onPointerMove = (e: MouseEvent) => {
-      pointerX = e.clientX;
-      pointerY = e.clientY;
+      const target = e.target as Element | null;
+      if (target && target.closest(INTERACTIVE_SELECTOR)) {
+        pointerX = -1000;
+        pointerY = -1000;
+        return;
+      }
+      // Coordinates relative to this canvas's own box, not the window —
+      // required for the "container" fill mode (a canvas that only covers
+      // half the screen) to react to the pointer at the right position.
+      const rect = canvas.getBoundingClientRect();
+      pointerX = e.clientX - rect.left;
+      pointerY = e.clientY - rect.top;
     };
 
     window.addEventListener('resize', onResize);
-    
+
     if (!prefersReducedMotion) {
       window.addEventListener('mousemove', onPointerMove);
     }
-    
+
     resize();
     if (!prefersReducedMotion) {
       draw();
@@ -117,17 +147,16 @@ export const DotField: React.FC<DotFieldProps> = ({ variant }) => {
         cancelAnimationFrame(animFrame);
       }
     };
-  }, [variant]);
+  }, [variant, dotColor, fill]);
 
   return (
     <canvas
       ref={canvasRef}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 0,
-        pointerEvents: 'none'
-      }}
+      style={
+        fill === 'viewport'
+          ? { position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', width: '100vw', height: '100vh' }
+          : { position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none', width: '100%', height: '100%' }
+      }
     />
   );
 };
