@@ -13,7 +13,7 @@ services:
     env_file:
       - ./backend/.env
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     restart: unless-stopped
@@ -38,7 +38,7 @@ services:
       MAX_CLIENT_CONN: 5000
       DEFAULT_POOL_SIZE: 50
     ports:
-      - "6432:5432"
+      - "127.0.0.1:6432:5432"
     depends_on:
       postgres:
         condition: service_healthy
@@ -48,7 +48,7 @@ services:
     image: redis:7-alpine
     container_name: shankara-redis
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redisdata:/data
     restart: unless-stopped
@@ -71,8 +71,8 @@ services:
         soft: 65536
         hard: 65536
     ports:
-      - "9200:9200"
-      - "9600:9600"
+      - "127.0.0.1:9200:9200"
+      - "127.0.0.1:9600:9600"
     volumes:
       - osdata:/usr/share/opensearch/data
     restart: unless-stopped

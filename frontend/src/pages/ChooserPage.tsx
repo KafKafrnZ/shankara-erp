@@ -31,16 +31,16 @@ export function ChooserPage() {
         className="chooser-panel chooser-panel-red"
         role="button"
         tabIndex={0}
-        aria-label="Enter Day Book and Vouchers"
+        aria-label="Find a bill in the day book"
         onClick={enterVouchers}
         onKeyDown={(e) => onPanelKeyDown(e, enterVouchers)}
       >
         <DotField variant="dark" dotColor="0, 0, 0" fill="container" />
         <div className="chooser-panel-content">
           <LogoChip height={32} />
-          <h2>Day Book &amp; Vouchers</h2>
-          <p>The book of record. Search-first, published data only.</p>
-          <span className="chooser-cta chooser-cta-dark dot-suppress">Enter Vouchers →</span>
+          <h2>Day book</h2>
+          <p>Find a bill or voucher from Tally.</p>
+          <span className="chooser-cta chooser-cta-dark dot-suppress">Find a bill →</span>
         </div>
       </div>
 
@@ -50,16 +50,16 @@ export function ChooserPage() {
         className="chooser-panel chooser-panel-black"
         role="button"
         tabIndex={0}
-        aria-label="Enter Catalog and Uploads"
+        aria-label="Find an item in the catalog"
         onClick={enterCatalog}
         onKeyDown={(e) => onPanelKeyDown(e, enterCatalog)}
       >
         <DotField variant="dark" fill="container" />
         <div className="chooser-panel-content">
           <BrandLogo height={32} />
-          <h2>Catalog &amp; Uploads</h2>
-          <p>Upload, search, and manage any item catalog — fast.</p>
-          <span className="chooser-cta chooser-cta-red dot-suppress">Enter Catalog →</span>
+          <h2>Item catalog</h2>
+          <p>Find an item by code, name, or catalogue number.</p>
+          <span className="chooser-cta chooser-cta-red dot-suppress">Find an item →</span>
         </div>
       </div>
     </div>

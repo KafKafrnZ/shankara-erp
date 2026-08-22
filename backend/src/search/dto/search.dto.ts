@@ -29,6 +29,7 @@ export class SearchDto {
   @IsOptional()
   @IsInt()
   @Min(0)
+  @Max(100000)
   @Type(() => Number)
   offset?: number = 0;
 }

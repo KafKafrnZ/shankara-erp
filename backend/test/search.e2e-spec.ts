@@ -341,6 +341,16 @@ describe('Search & Vouchers (e2e)', () => {
       .expect(200);
     expect(res2.body.asOf).toBeTruthy();
     expect(res2.body.batchId).toBe(Number(batchId));
+
+    const live = await request(app.getHttpServer())
+      .get('/api/meta/live-sources')
+      .set('Authorization', `Bearer ${financeToken}`)
+      .expect(200);
+    const match = live.body.vouchers.live.find((f: { batchId: number }) => f.batchId === Number(batchId));
+    expect(match).toBeTruthy();
+    expect(match.originalName).toMatch(/test-search-.*\.csv$/);
+    expect(match.liveRows).toBeGreaterThan(0);
+    expect(live.body.vouchers.pending).toEqual([]);
   });
 
   it('search and voucher_open and publish and unpublish are audited', async () => {

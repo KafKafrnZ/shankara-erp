@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth.ts';
 import { Money } from '../components/Money.tsx';
 import { VoucherDrawer } from '../components/VoucherDrawer.tsx';
+import { LiveSourcePane } from '../components/LiveSourcePane.tsx';
 import { fetchVchTypes, isApiError, searchVouchers } from '../lib/api.ts';
 import { formatDate } from '../lib/format.ts';
 import { readRecentSearches, rememberSearch } from '../lib/recent-searches.ts';
@@ -246,15 +247,15 @@ export function SearchPage() {
   if (!isResults) {
     return (
       <div className="landing">
-        <h1 className="landing-title">Find any voucher</h1>
+        <h1 className="landing-title">Find a bill</h1>
         <form className="landing-form" onSubmit={onSubmit}>
           <input
             ref={inputRef}
             className="search-hero"
             value={draftQ}
             onChange={(e) => setDraftQ(e.target.value)}
-            placeholder="Voucher number, party, narration, amount"
-            aria-label="Search vouchers"
+            placeholder="Bill number, party, narration, amount"
+            aria-label="Find a bill"
             maxLength={200}
           />
           <div className="landing-actions">
@@ -269,6 +270,7 @@ export function SearchPage() {
             <button type="submit" className="btn btn-secondary">Apply filters</button>
           </details>
         </form>
+        <LiveSourcePane kind="vouchers" />
         {recent.length > 0 && (
           <div className="recent">
             <h2>Recent searches</h2>
@@ -302,8 +304,8 @@ export function SearchPage() {
           className="search-compact"
           value={draftQ}
           onChange={(e) => setDraftQ(e.target.value)}
-          placeholder="Search vouchers"
-          aria-label="Search vouchers"
+          placeholder="Bill number, party, narration, amount"
+          aria-label="Find a bill"
           maxLength={200}
         />
         <button type="submit" className="btn btn-primary">Search</button>
@@ -315,6 +317,8 @@ export function SearchPage() {
           Clear
         </button>
       </form>
+
+      <LiveSourcePane kind="vouchers" />
 
       <div className="results-layout">
         <aside className="filter-rail">
@@ -371,7 +375,9 @@ export function SearchPage() {
                         </div>
                       </td>
                       <td>{hit.vchType}</td>
-                      <td className="nowrap">{highlight(hit.vchNo, q)}</td>
+                      <td className="nowrap td-key">
+                        <span className="key-value">{highlight(hit.vchNo, q)}</span>
+                      </td>
                       <td className="num"><Money value={hit.totalAmount} /></td>
                       {showCompany && <td>{hit.companyId}</td>}
                       <td className="row-actions" onClick={(e) => e.stopPropagation()}>

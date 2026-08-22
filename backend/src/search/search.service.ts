@@ -7,6 +7,10 @@ import { AuditService } from '../audit/audit.service';
 import { VOUCHER_INDEX_TOKEN } from '../search-index/search-index.interface';
 import type { VoucherIndex } from '../search-index/search-index.interface';
 
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
 @Injectable()
 export class SearchService {
   constructor(
@@ -24,11 +28,9 @@ export class SearchService {
       const res = await this.indexer.searchCandidates(dto.q, { size: 50 });
       const pgIds = (res.ids || []).map(String).filter((id) => /^\d+$/.test(id));
       if (pgIds.length === 0) {
-        const asOf = await this.getAsOf(user);
-        await this.auditService.log({
-          userId: user.id, action: 'search', ip, userAgent, meta: { q: dto.q, total: 0, backend: 'os' }
-        });
-        return { asOf, total: 0, hits: [] };
+        // Empty OS (stale index, unpublished cluster, non-numeric _ids)
+        // is not "no such voucher" — Postgres is the book of record.
+        return this.searchSql(dto, user, ip, userAgent);
       }
       return await this.searchSql(dto, user, ip, userAgent, pgIds);
     } catch {
@@ -72,8 +74,8 @@ export class SearchService {
       params.push(dto.to);
     }
     if (dto.vchType) {
-      whereSql += ` AND voucher.vch_type ILIKE $${paramIdx++}`;
-      params.push(dto.vchType);
+      whereSql += ` AND voucher.vch_type ILIKE $${paramIdx++} ESCAPE '\\'`;
+      params.push(escapeLike(dto.vchType));
     }
 
     let rankSql = '';
@@ -83,8 +85,8 @@ export class SearchService {
       const norm = normalizeVchNo(dto.q);
       if (norm.length >= 1 && (/\d/.test(dto.q) || dto.q.includes('/') || dto.q.includes('-'))) {
         // LIKE prefix and exact rank must be different binds (`invsr1` ≠ `invsr1%`).
-        signals.push(`voucher.vch_no_norm LIKE $${paramIdx}`);
-        params.push(`${norm}%`);
+        signals.push(`voucher.vch_no_norm LIKE $${paramIdx} ESCAPE '\\'`);
+        params.push(`${escapeLike(norm)}%`);
         paramIdx++;
         exactNormForRank = norm;
       }
@@ -97,11 +99,11 @@ export class SearchService {
         paramIdx++;
       }
 
-      signals.push(`voucher.party_name ILIKE $${paramIdx}`);
-      signals.push(`voucher.narration ILIKE $${paramIdx}`);
-      signals.push(`voucher.vch_no ILIKE $${paramIdx}`);
-      params.push(`%${dto.q}%`);
-      rankSql += `(voucher.party_name ILIKE $${paramIdx}) DESC, `;
+      signals.push(`voucher.party_name ILIKE $${paramIdx} ESCAPE '\\'`);
+      signals.push(`voucher.narration ILIKE $${paramIdx} ESCAPE '\\'`);
+      signals.push(`voucher.vch_no ILIKE $${paramIdx} ESCAPE '\\'`);
+      params.push(`%${escapeLike(dto.q)}%`);
+      rankSql += `(voucher.party_name ILIKE $${paramIdx} ESCAPE '\\') DESC, `;
       paramIdx++;
 
       if (signals.length > 0 && !osIds) {

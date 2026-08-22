@@ -107,6 +107,24 @@ describe('Auth (e2e)', () => {
     expect(Array.isArray(companies.body.items)).toBe(true);
   });
 
+  it('GET /api/meta/live-sources is authenticated and lists live/pending buckets', async () => {
+    await request(app.getHttpServer()).get('/api/meta/live-sources').expect(401);
+
+    const login = await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ email: 'steward@shankara.local', password: stewardPassword })
+      .expect(200);
+
+    const res = await request(app.getHttpServer())
+      .get('/api/meta/live-sources')
+      .set('Authorization', `Bearer ${login.body.accessToken}`)
+      .expect(200);
+    expect(Array.isArray(res.body.items.live)).toBe(true);
+    expect(Array.isArray(res.body.items.pending)).toBe(true);
+    expect(Array.isArray(res.body.vouchers.live)).toBe(true);
+    expect(Array.isArray(res.body.vouchers.pending)).toBe(true);
+  });
+
   it('GET /api/health remains public 200', async () => {
     await request(app.getHttpServer()).get('/api/health').expect(200);
   });

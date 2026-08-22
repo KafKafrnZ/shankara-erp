@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException, BadRequestException, OnModuleInit, OnModuleDestroy, Inject } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, OnModuleInit, OnModuleDestroy, Inject } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, QueryFailedError } from 'typeorm';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -16,11 +17,13 @@ import type { ObjectStore } from '../storage/object-store';
 import { OBJECT_STORE } from '../storage/object-store';
 import { AuditService } from '../audit/audit.service';
 import { parseItemMasterStream } from './parse/item-master.parser';
+import { ItemSearchService } from './item-search.service';
 
 const pipeline = promisify(stream.pipeline);
 
 @Injectable()
 export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(ItemMasterService.name);
   private boss: PgBoss;
 
   constructor(
@@ -31,18 +34,23 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
     @Inject(OBJECT_STORE) private objectStore: ObjectStore,
     private dataSource: DataSource,
     private auditService: AuditService,
+    private configService: ConfigService,
+    private itemSearchService: ItemSearchService,
   ) {}
 
   async onModuleInit() {
     this.boss = new PgBoss({
-      host: process.env.DATABASE_HOST || '127.0.0.1',
-      port: parseInt(process.env.DATABASE_PORT || '6432', 10),
-      user: process.env.DATABASE_USER || 'shankara',
-      password: process.env.DATABASE_PASSWORD || 'shankara123',
-      database: process.env.DATABASE_NAME || 'shankara',
+      host: this.configService.getOrThrow<string>('DATABASE_HOST'),
+      port: Number(
+        this.configService.get('JOBS_DATABASE_PORT')
+        ?? this.configService.get('DATABASE_PORT'),
+      ),
+      user: this.configService.getOrThrow<string>('DATABASE_USER'),
+      password: this.configService.getOrThrow<string>('DATABASE_PASSWORD'),
+      database: this.configService.getOrThrow<string>('DATABASE_NAME'),
     });
 
-    this.boss.on('error', error => console.error(error));
+    this.boss.on('error', error => this.logger.error(error));
 
     await this.boss.start();
     // pg-boss v12 requires a queue to exist before .work()/.send() can use
@@ -64,6 +72,9 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
 
   async processUpload(fileStream: stream.Readable, originalName: string, mimeType: string, byteSize: number, userId: string, ip?: string, userAgent?: string) {
     const tmpPath = path.join('/tmp', `item_upload_${Date.now()}_${Math.random().toString(36).substring(7)}`);
+    const queryRunner = this.dataSource.createQueryRunner();
+    let committed = false;
+    try {
     const writeStream = fs.createWriteStream(tmpPath);
     const hash = crypto.createHash('sha256');
 
@@ -72,12 +83,8 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
 
     const sha256 = hash.digest('hex');
 
-    const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
-
-    let committed = false;
-    try {
       const existingBatch = await queryRunner.manager.findOne(ItemMasterBatch, { where: { fileSha256: sha256 } });
       if (existingBatch) {
         await queryRunner.rollbackTransaction();
@@ -147,8 +154,6 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
       // whatever actually went wrong here).
       await this.boss.send('item-master-parse', { batchId: Number(batch.id) });
 
-      fs.unlinkSync(tmpPath);
-
       return {
         batchId: Number(batch.id),
         status: 'processing',
@@ -157,13 +162,23 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
         originalName,
       };
     } catch (err) {
-      if (!committed) {
-        await queryRunner.rollbackTransaction();
+      try {
+        if (queryRunner.isTransactionActive) {
+          await queryRunner.rollbackTransaction();
+        }
+      } catch { /* never started */ }
+      const code = err instanceof QueryFailedError
+        ? (err as QueryFailedError & { driverError?: { code?: string } }).driverError?.code
+        : '';
+      if (code === '23505') {
+        throw new BadRequestException('This file is already being uploaded. Wait a moment and try again.');
       }
-      if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
       throw err;
     } finally {
-      await queryRunner.release();
+      if (queryRunner.isReleased === false) {
+        try { await queryRunner.release(); } catch { /* already released */ }
+      }
+      if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
     }
   }
 
@@ -181,7 +196,7 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
       // Auto-released at commit/rollback — nothing to manually unlock.
       const lockResult = await queryRunner.manager.query('SELECT pg_try_advisory_xact_lock($1) as locked', [batchId]);
       if (!lockResult[0].locked) {
-        console.warn(`[ItemMasterService] batch ${batchId} is already being processed by another run — skipping this one`);
+        this.logger.warn(`batch ${batchId} is already being processed by another run — skipping this one`);
         await queryRunner.rollbackTransaction();
         return;
       }
@@ -194,12 +209,14 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
 
       const objectStream = await this.objectStore.get(batch.sourceFile.storageKey);
       const tmpPath = path.join('/tmp', `item_parse_${batchId}_${Date.now()}.xlsx`);
-      
-      const writeStream = fs.createWriteStream(tmpPath);
-      await pipeline(objectStream, writeStream);
-
-      const parsed = await parseItemMasterStream(tmpPath);
-      fs.unlinkSync(tmpPath);
+      let parsed: Awaited<ReturnType<typeof parseItemMasterStream>>;
+      try {
+        const writeStream = fs.createWriteStream(tmpPath);
+        await pipeline(objectStream, writeStream);
+        parsed = await parseItemMasterStream(tmpPath);
+      } finally {
+        if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+      }
 
       batch.totalSheets = parsed.totalSheets;
       batch.recognizedSheets = parsed.recognizedSheets;
@@ -207,6 +224,12 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
       batch.totalRows = parsed.totalRows;
       batch.acceptedRows = parsed.acceptedRows;
       batch.skippedRows = parsed.skippedRows;
+
+      // Retry of a stuck/rejected batch re-runs this job against the same
+      // batch id. Drop this batch's previous rows/skips first so we don't
+      // leave two current copies of the same code inside one batch.
+      await queryRunner.manager.delete(ItemMasterSkip, { batchId: String(batchId) });
+      await queryRunner.manager.delete(ItemMasterRow, { batchId: String(batchId) });
 
       if (parsed.skips.length > 0) {
         const skips = parsed.skips.map(s => this.skipRepo.create({
@@ -236,6 +259,11 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
       // healthy upload. This does the same work in ~3 queries total (plus
       // one small INSERT per chunk), not 3 per row.
       //
+      // Closing the previous live row is deferred until publish. Doing it
+      // here made those items vanish from search the moment a file was
+      // uploaded — before anyone accepted it — because search only shows
+      // published current rows.
+      //
       // Step 1: if the same item_code appears more than once in this file,
       // keep only the last occurrence. This matches the net effect of the
       // original row-by-row code — each later occurrence in the same file
@@ -250,23 +278,24 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
       }
       const dedupedItems = [...dedupedByCode.values()];
 
-      // Step 2: one query to fetch every currently-live row for every item
-      // code in this file, instead of one SELECT per row. `= ANY(:codes)`
-      // binds the whole list as a single array parameter — unlike
-      // TypeORM's `In()` operator, which binds one parameter per value and
-      // would itself blow past Postgres's 65,535-parameter limit for a
-      // file with more than ~65k distinct codes.
+      // Step 2: one query to fetch every currently-live *published* row for
+      // every item code in this file, instead of one SELECT per row.
+      // `= ANY(:codes)` binds the whole list as a single array parameter —
+      // unlike TypeORM's `In()` operator, which binds one parameter per
+      // value and would itself blow past Postgres's 65,535-parameter limit
+      // for a file with more than ~65k distinct codes.
       const itemCodes = dedupedItems.map(i => i.itemCode);
       const currentRows = itemCodes.length > 0
         ? await queryRunner.manager
             .createQueryBuilder(ItemMasterRow, 'row')
+            .innerJoin('row.batch', 'batch')
             .where('row.item_code = ANY(:codes)', { codes: itemCodes })
             .andWhere('row.valid_to IS NULL')
+            .andWhere("batch.status = 'published'")
             .getMany()
         : [];
       const currentByCode = new Map(currentRows.map(r => [r.itemCode, r]));
 
-      const toSupersedeIds: string[] = [];
       const toInsert: ItemMasterRow[] = [];
 
       for (const item of dedupedItems) {
@@ -302,8 +331,6 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
               userId: null, action: 'item_collision_warn', entityType: 'item_master_row', entityId: currentRow.id, meta: { oldBrand: currentRow.brand, newBrand: item.brand, oldGroup: currentRow.mainGroup, newGroup: item.mainGroup, itemCode: item.itemCode }
             }, queryRunner.manager);
           }
-
-          toSupersedeIds.push(currentRow.id);
         }
 
         toInsert.push(this.rowRepo.create({
@@ -313,19 +340,9 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
         }));
       }
 
-      // Step 3: one bulk UPDATE to supersede every replaced row, instead of
-      // one UPDATE per row. Same `= ANY()` array-bind reasoning as above.
-      if (toSupersedeIds.length > 0) {
-        await queryRunner.manager
-          .createQueryBuilder()
-          .update(ItemMasterRow)
-          .set({ validTo: new Date() })
-          .where('id = ANY(:ids)', { ids: toSupersedeIds })
-          .execute();
-      }
-
-      // Step 4: chunked bulk insert (same pattern as the skips insert
-      // above) instead of one INSERT per row.
+      // Step 3: chunked bulk insert (same pattern as the skips insert
+      // above) instead of one INSERT per row. Previous published rows stay
+      // current until publishBatch() closes them.
       if (toInsert.length > 0) {
         await queryRunner.manager.save(toInsert, { chunk: 500 });
       }
@@ -363,7 +380,7 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
         await queryRunnerFail.release();
       }
 
-      console.error('Job error', err);
+      this.logger.error('Job error', err instanceof Error ? err.stack : String(err));
     } finally {
       await queryRunner.release();
     }
@@ -375,58 +392,114 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
     return batch;
   }
 
-  async getSkips(batchId: number) {
-    const [data, total] = await this.skipRepo.findAndCount({
+  async getSkips(batchId: number, page = 1, pageSize = 50) {
+    const [items, total] = await this.skipRepo.findAndCount({
       where: { batchId: String(batchId) },
-      order: { id: 'ASC' },
-      take: 1000 // In a real app we'd paginate this
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      order: { sourceRowNo: 'ASC' },
     });
-    return { data, total };
+    return { items, total };
   }
 
   async publishBatch(batchId: number, userId: string, ip?: string, userAgent?: string) {
-    const batch = await this.batchRepo.findOneBy({ id: String(batchId) });
-    if (!batch) throw new NotFoundException('Batch not found');
-    if (batch.status === 'published' || batch.status === 'rejected') {
-      throw new BadRequestException('Batch is not in held state');
-    }
-    if (batch.status === 'processing') {
-      throw new BadRequestException('STILL_PROCESSING');
-    }
-
-    batch.status = 'published';
-    batch.publishedAt = new Date();
-    batch.publishedBy = userId;
-
     await this.dataSource.transaction(async manager => {
+      await manager.query(`SELECT pg_advisory_xact_lock(hashtext('item-master-publish'))`);
+      const batch = await manager.findOne(ItemMasterBatch, {
+        where: { id: String(batchId) },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!batch) throw new NotFoundException('Batch not found');
+      if (batch.status !== 'held') {
+        throw new BadRequestException('Batch is not in held state');
+      }
+
+      const codeRows: Array<{ item_code: string }> = await manager.query(
+        `SELECT DISTINCT item_code FROM item_master_row WHERE batch_id = $1`,
+        [String(batchId)],
+      );
+      const itemCodes = codeRows.map((r) => r.item_code);
+      if (itemCodes.length > 0) {
+        // Close only currently-live published rows. Pending rows on another
+        // held upload must stay untouched so that file can still be accepted.
+        await manager.query(
+          `UPDATE item_master_row AS r
+              SET valid_to = NOW()
+             FROM item_master_batch AS b
+            WHERE r.batch_id = b.id
+              AND b.status = 'published'
+              AND r.valid_to IS NULL
+              AND r.batch_id <> $1
+              AND r.item_code = ANY($2)`,
+          [String(batchId), itemCodes],
+        );
+      }
+
+      batch.status = 'published';
+      batch.publishedAt = new Date();
+      batch.publishedBy = userId;
       await manager.save(batch);
       await this.auditService.log({
         userId, action: 'item_publish', entityType: 'item_master_batch', entityId: batchId, ip, userAgent, meta: {}
       }, manager);
     });
 
+    this.itemSearchService.clearFacetsCache();
     return this.getBatch(batchId);
   }
 
   async holdBatch(batchId: number, userId: string, ip?: string, userAgent?: string) {
-    const batch = await this.batchRepo.findOneBy({ id: String(batchId) });
-    if (!batch) throw new NotFoundException('Batch not found');
-    if (batch.status === 'held') return batch;
-    if (batch.status === 'processing') {
-      throw new BadRequestException('STILL_PROCESSING');
-    }
-
-    batch.status = 'held';
-    batch.publishedAt = null;
-    batch.publishedBy = null;
-
     await this.dataSource.transaction(async manager => {
+      await manager.query(`SELECT pg_advisory_xact_lock(hashtext('item-master-publish'))`);
+      const batch = await manager.findOne(ItemMasterBatch, {
+        where: { id: String(batchId) },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!batch) throw new NotFoundException('Batch not found');
+      if (batch.status === 'held') return;
+      if (batch.status !== 'published') {
+        throw new BadRequestException('Only a live catalog file can be taken off search');
+      }
+
+      await manager.query(
+        `UPDATE item_master_row AS prev
+            SET valid_to = NULL
+           FROM (
+             SELECT DISTINCT ON (r.item_code) r.id, r.item_code
+               FROM item_master_row r
+               JOIN item_master_batch b ON b.id = r.batch_id
+              WHERE r.batch_id <> $1
+                AND r.is_deleted = false
+                AND r.valid_to IS NOT NULL
+                AND b.status = 'published'
+                AND r.item_code IN (SELECT item_code FROM item_master_row WHERE batch_id = $1)
+              ORDER BY r.item_code, r.valid_from DESC, r.id DESC
+           ) AS pick
+          WHERE prev.id = pick.id
+            AND prev.valid_to IS NOT NULL
+            AND NOT EXISTS (
+              SELECT 1
+                FROM item_master_row cur
+                JOIN item_master_batch b ON b.id = cur.batch_id
+               WHERE cur.item_code = pick.item_code
+                 AND cur.valid_to IS NULL
+                 AND cur.is_deleted = false
+                 AND b.status = 'published'
+                 AND cur.batch_id <> $1
+            )`,
+        [String(batchId)],
+      );
+
+      batch.status = 'held';
+      batch.publishedAt = null;
+      batch.publishedBy = null;
       await manager.save(batch);
       await this.auditService.log({
         userId, action: 'item_hold', entityType: 'item_master_batch', entityId: batchId, ip, userAgent, meta: {}
       }, manager);
     });
 
+    this.itemSearchService.clearFacetsCache();
     return this.getBatch(batchId);
   }
 

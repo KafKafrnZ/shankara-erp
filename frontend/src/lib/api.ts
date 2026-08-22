@@ -1,5 +1,6 @@
 import type {
   Batch,
+  LiveSources,
   RejectsResponse,
   SearchBody,
   SearchResponse,
@@ -71,7 +72,11 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     if (!isLogin) {
       sessionStorage.removeItem(TOKEN_KEY);
       if (window.location.pathname !== '/login') {
-        window.location.assign('/login');
+        const next = `${window.location.pathname}${window.location.search}`;
+        const safe = next.startsWith('/') && !next.startsWith('//')
+          ? `/login?next=${encodeURIComponent(next)}`
+          : '/login';
+        window.location.assign(safe);
       }
     }
     throw new ApiError(401, nestMessage(payload) || 'Invalid credentials', payload);
@@ -120,6 +125,10 @@ export function logout() {
 
 export function fetchAsOf() {
   return api<{ asOf: string | null; batchId: number | null }>('/api/meta/as-of');
+}
+
+export function fetchLiveSources() {
+  return api<LiveSources>('/api/meta/live-sources');
 }
 
 export function fetchVchTypes() {

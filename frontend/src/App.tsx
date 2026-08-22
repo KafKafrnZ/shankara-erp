@@ -1,4 +1,4 @@
-import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
+import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './auth/useAuth.ts';
 import { AppShell } from './components/AppShell.tsx';
 import { ChooserPage } from './pages/ChooserPage.tsx';
@@ -7,14 +7,24 @@ import { SearchPage } from './pages/SearchPage.tsx';
 import { UploadPage } from './pages/UploadPage.tsx';
 import { CatalogPage } from './pages/CatalogPage.tsx';
 import { CatalogUploadPage } from './pages/CatalogUploadPage.tsx';
+import { UsersPage } from './pages/UsersPage.tsx';
+
+function loginNext(path: string, search: string) {
+  const next = `${path}${search}`;
+  if (next.startsWith('/') && !next.startsWith('//')) {
+    return `/login?next=${encodeURIComponent(next)}`;
+  }
+  return '/login';
+}
 
 function RequireAuth() {
   const { user, loading } = useAuth();
+  const location = useLocation();
   if (loading) {
     return <div className="boot">Loading…</div>;
   }
   if (!user) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to={loginNext(location.pathname, location.search)} replace />;
   }
   return <Outlet />;
 }
@@ -55,6 +65,7 @@ export default function App() {
           <Route path="/catalog" element={<CatalogPage />} />
           <Route path="/catalog/upload" element={<CatalogUploadPage />} />
           <Route path="/upload" element={<UploadPage />} />
+          <Route path="/admin/users" element={<UsersPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

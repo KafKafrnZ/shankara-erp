@@ -23,6 +23,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!user || !user.isActive) {
       throw new UnauthorizedException();
     }
+    const tokenVer = payload.ver ?? 0;
+    if (tokenVer !== user.tokenVersion) {
+      throw new UnauthorizedException();
+    }
     return toAuthUser(user);
   }
 }

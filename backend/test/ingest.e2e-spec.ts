@@ -131,30 +131,38 @@ describe('Ingest (e2e)', () => {
     // Generate a fixed uniq for this test
     const testUniq = 'TEST_VER_' + Date.now().toString() + Math.floor(Math.random() * 1000);
 
-    // Original upload
+    // Original upload then make live — versioning happens at publish, not upload.
     const { tmp: origCsvPath } = generateUniqueCsv(path.join(__dirname, '../../fixtures/daybook/sample-daybook.csv'), () => {}, testUniq);
-    await request(app.getHttpServer())
+    const orig = await request(app.getHttpServer())
       .post('/api/uploads')
       .set('Authorization', `Bearer ${stewardToken}`)
       .field('companyId', 'SHANKARA_HYD')
       .attach('file', origCsvPath)
       .expect(202);
+    await request(app.getHttpServer())
+      .post(`/api/batches/${orig.body.batchId}/publish`)
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .expect(200);
 
     // Mutated upload with SAME uniq
     const { tmp: changedCsvPath } = generateUniqueCsv(path.join(__dirname, '../../fixtures/daybook/sample-daybook.csv'), (lines) => {
       for (let i = 0; i < lines.length; i++) {
-        if (lines[i].includes('12,48,500.00') && lines[i].includes('Sri Steel Traders')) {
-          lines[i] = lines[i].replace('12,48,500.00', '12,48,501.00');
+        if (lines[i].includes('Sri Steel Traders')) {
+          lines[i] = lines[i].replace('Sri Steel Traders', 'Sri Steel Traders Revised');
         }
       }
     }, testUniq);
 
-    await request(app.getHttpServer())
+    const changed = await request(app.getHttpServer())
       .post('/api/uploads')
       .set('Authorization', `Bearer ${stewardToken}`)
       .field('companyId', 'SHANKARA_HYD')
       .attach('file', changedCsvPath)
       .expect(202);
+    await request(app.getHttpServer())
+      .post(`/api/batches/${changed.body.batchId}/publish`)
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .expect(200);
 
     const afterVouchers = await db.query(`
       SELECT * FROM voucher
@@ -163,10 +171,10 @@ describe('Ingest (e2e)', () => {
     `, ['INV/HYD/' + testUniq]);
 
     const current = afterVouchers.find((v: any) => v.valid_to === null);
-    const old = afterVouchers.find((v: any) => v.valid_to !== null && v.total_amount === '1248500.00');
+    const old = afterVouchers.find((v: any) => v.valid_to !== null && String(v.party_name || '').includes('Sri Steel Traders') && !String(v.party_name || '').includes('Revised'));
 
     expect(current).toBeDefined();
-    expect(current.total_amount).toBe('1248501.00');
+    expect(String(current.party_name)).toContain('Revised');
     expect(old).toBeDefined();
   });
 

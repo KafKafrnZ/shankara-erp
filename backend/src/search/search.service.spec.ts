@@ -69,17 +69,36 @@ describe('SearchService vch_no_norm binds', () => {
     expect(count!.params).not.toContain('s19stale');
   });
 
-  it('treats OS hits that are all non-numeric as a miss, not SQL 500', async () => {
-    const dataSource = { query: jest.fn().mockResolvedValue([{ asOf: null }]) };
+  it('escapes LIKE wildcards in the user query so % is literal', async () => {
+    const queries: { sql: string; params: unknown[] }[] = [];
+    const dataSource = {
+      query: jest.fn(async (sql: string, params?: unknown[]) => {
+        queries.push({ sql, params: [...(params ?? [])] });
+        if (/COUNT/i.test(sql)) return [{ total: 0 }];
+        return [];
+      }),
+    };
+    const indexer = { searchCandidates: jest.fn().mockRejectedValue(new Error('no OS')) };
+    const auditService = { log: jest.fn().mockResolvedValue(undefined) };
+    const service = new SearchService(dataSource as any, auditService as any, indexer as any);
+
+    await service.search({ q: '100%', limit: 20, offset: 0 }, { role: 'finance', id: 1 });
+
+    const count = queries.find((q) => /COUNT/i.test(q.sql));
+    expect(count!.params).toContain('%100\\%%');
+    expect(count!.params).not.toContain('%100%%');
+    expect(count!.sql).toMatch(/ESCAPE '\\'/);
+  });
+
+  it('falls back to SQL when OS returns no numeric ids, instead of a fake empty result', async () => {
+    const dataSource = { query: jest.fn().mockResolvedValue([{ total: 0 }]) };
     const indexer = {
       searchCandidates: jest.fn().mockResolvedValue({ ids: ['s19stale'], tookMs: 1 }),
     };
     const auditService = { log: jest.fn() };
     const service = new SearchService(dataSource as any, auditService as any, indexer as any);
 
-    const res = await service.search({ q: 'S19STALE/1' }, { role: 'finance', id: 1 });
-    expect(res.total).toBe(0);
-    expect(res.hits).toEqual([]);
-    expect(dataSource.query).toHaveBeenCalledTimes(1);
+    await service.search({ q: 'S19STALE/1' }, { role: 'finance', id: 1 });
+    expect(dataSource.query).toHaveBeenCalledTimes(3);
   });
 });

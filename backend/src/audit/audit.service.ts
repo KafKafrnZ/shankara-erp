@@ -9,6 +9,7 @@ export const AUDIT_ACTIONS = [
   'search', 'voucher_open',
   'item_upload', 'item_publish', 'item_hold', 'item_retry',
   'item_collision_warn', 'job_status_override_warn',
+  'user_create', 'user_update', 'user_password_reset',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

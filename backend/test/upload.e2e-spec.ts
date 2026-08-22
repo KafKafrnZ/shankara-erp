@@ -126,21 +126,24 @@ describe('UploadController (e2e)', () => {
     expect(audit.length).toBe(1);
   });
 
-  it('second upload same bytes is duplicate and does not add source_file', async () => {
+  it('second upload of a rejected file reuses the source_file and does not add another', async () => {
     const beforeCount = await dbConnection.query(`SELECT COUNT(*) as count FROM source_file`);
+    const beforeBatches = await dbConnection.query(`SELECT COUNT(*) as count FROM ingest_batch WHERE file_sha256 = $1`, [expectedSha]);
 
     const res = await request(app.getHttpServer())
       .post('/api/uploads')
       .set('Authorization', `Bearer ${stewardToken}`)
       .field('companyId', 'SHANKARA_HYD')
       .attach('file', fixturePathCsv)
-      .expect(200);
+      .expect(202);
 
-    expect(res.body.status).toBe('duplicate');
-    expect(res.body.duplicate).toBe(true);
+    expect(res.body.status).toBe('rejected');
+    expect(res.body.duplicate).toBe(false);
 
     const afterCount = await dbConnection.query(`SELECT COUNT(*) as count FROM source_file`);
     expect(afterCount[0].count).toBe(beforeCount[0].count);
+    const afterBatches = await dbConnection.query(`SELECT COUNT(*) as count FROM ingest_batch WHERE file_sha256 = $1`, [expectedSha]);
+    expect(afterBatches[0].count).toBe(beforeBatches[0].count);
   });
 
   it('stored file sha256 matches response', async () => {

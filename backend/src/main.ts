@@ -12,9 +12,16 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
   app.use(helmet());
 
+  if (configService.get<boolean>('TRUST_PROXY')) {
+    app.getHttpAdapter().getInstance().set('trust proxy', 1);
+  }
+
   const corsOrigin = configService.get<string>('CORS_ORIGIN') || 'http://127.0.0.1:5173';
+  const isProd = configService.get<string>('NODE_ENV') === 'production';
   app.enableCors({
-    origin: Array.from(new Set([corsOrigin, 'http://127.0.0.1:5173', 'http://localhost:5173'])),
+    origin: isProd
+      ? corsOrigin
+      : Array.from(new Set([corsOrigin, 'http://127.0.0.1:5173', 'http://localhost:5173'])),
   });
   
   app.useGlobalPipes(new ValidationPipe({

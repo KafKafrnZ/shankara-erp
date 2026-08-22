@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, isApiError } from '../lib/api.ts';
 import { formatDate } from '../lib/format.ts';
+import { itemPrimaryKey } from '../lib/item-key.ts';
 
 type Props = {
   itemCode: string;
@@ -19,6 +20,7 @@ interface ItemHistoryRow {
   subGroup: string | null;
   uom: string | null;
   alias: string | null;
+  layoutKey: string | null;
   validFrom: string;
   validTo: string | null;
 }
@@ -28,6 +30,7 @@ export function ItemDrawer({ itemCode, onClose }: Props) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [copyText, setCopyText] = useState('');
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -67,6 +70,7 @@ export function ItemDrawer({ itemCode, onClose }: Props) {
   }, [itemCode]);
 
   const current = history[0];
+  const key = current ? itemPrimaryKey(current) : null;
 
   // Copies every field shown on screen, not just the item code — the code
   // alone (which for master-code-layout rows literally IS the alias) isn't
@@ -74,23 +78,27 @@ export function ItemDrawer({ itemCode, onClose }: Props) {
   // Excel sheet; they want the whole item, the way it looks on the drawer.
   const copyDetails = async () => {
     if (!current) return;
+    const keyLine = itemPrimaryKey(current);
     const lines = [
+      `${keyLine.label}: ${keyLine.value}`,
       current.itemName,
       current.brand && `Brand: ${current.brand}`,
-      current.catalogueNo && `Catalogue No: ${current.catalogueNo}`,
-      current.sapItemCode && `SAP Item Code: ${current.sapItemCode}`,
-      current.alias && `Alias: ${current.alias}`,
+      current.catalogueNo && keyLine.kind !== 'catalogueNo' && `Catalogue No: ${current.catalogueNo}`,
+      current.sapItemCode && keyLine.kind !== 'sapItemCode' && `SAP Item Code: ${current.sapItemCode}`,
+      current.alias && keyLine.kind !== 'alias' && `Alias: ${current.alias}`,
       current.mainGroup && `Main Group: ${current.mainGroup}`,
       current.subGroup && `Sub Group: ${current.subGroup}`,
       current.uom && `UOM: ${current.uom}`,
       current.hsnDescription && `HSN Description: ${current.hsnDescription}`,
-    ].filter(Boolean);
+    ].filter(Boolean) as string[];
+    const text = lines.join('\n');
     try {
-      await navigator.clipboard.writeText(lines.join('\n'));
+      await navigator.clipboard.writeText(text);
       setCopied(true);
+      setCopyText('');
       window.setTimeout(() => setCopied(false), 1500);
     } catch {
-      /* clipboard may be blocked */
+      setCopyText(text);
     }
   };
 
@@ -104,7 +112,7 @@ export function ItemDrawer({ itemCode, onClose }: Props) {
               <>
                 <div className="drawer-kicker">{current.brand || 'No brand'}</div>
                 <h2 className="drawer-title">{current.itemName}</h2>
-                <p className="drawer-sub">{current.itemCode}</p>
+                <p className="drawer-sub"><span className="key-kicker">{key?.label}</span> {current.itemCode}</p>
               </>
             ) : (
               <h2 className="drawer-title">Item Master</h2>
@@ -137,11 +145,11 @@ export function ItemDrawer({ itemCode, onClose }: Props) {
         {!loading && !error && current && (
           <>
             <dl className="meta-grid">
-              <div>
+              <div className={key?.kind === 'catalogueNo' ? 'meta-key' : undefined}>
                 <dt>Catalogue No</dt>
                 <dd>{current.catalogueNo || '—'}</dd>
               </div>
-              <div>
+              <div className={key?.kind === 'sapItemCode' ? 'meta-key' : undefined}>
                 <dt>SAP Item Code</dt>
                 <dd>{current.sapItemCode || '—'}</dd>
               </div>
@@ -157,7 +165,7 @@ export function ItemDrawer({ itemCode, onClose }: Props) {
                 <dt>UOM</dt>
                 <dd>{current.uom || '—'}</dd>
               </div>
-              <div>
+              <div className={key?.kind === 'alias' ? 'meta-key' : undefined}>
                 <dt>Alias</dt>
                 <dd>{current.alias || '—'}</dd>
               </div>
@@ -168,6 +176,13 @@ export function ItemDrawer({ itemCode, onClose }: Props) {
                 </div>
               )}
             </dl>
+
+            {copyText && (
+              <label className="field" style={{ marginBottom: '16px' }}>
+                <span>Clipboard blocked — select and copy this</span>
+                <textarea readOnly rows={6} value={copyText} />
+              </label>
+            )}
 
             <h3 style={{ fontSize: '13px', marginTop: '24px', marginBottom: '8px' }}>Version History</h3>
             <table className="lines-table">

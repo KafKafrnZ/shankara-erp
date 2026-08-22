@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { fetchAsOf, fetchMe, login as loginApi, logout as logoutApi, TOKEN_KEY } from '../lib/api.ts';
+import { clearHowToDismissed } from '../lib/howto.ts';
 import type { User } from '../lib/types.ts';
 import { AuthContext } from './context.ts';
 
@@ -61,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       /* still clear locally */
     }
     sessionStorage.removeItem(TOKEN_KEY);
+    clearHowToDismissed();
     setUser(null);
     setAsOf(null);
   }, []);

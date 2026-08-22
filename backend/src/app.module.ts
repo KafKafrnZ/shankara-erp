@@ -17,7 +17,7 @@ import { SearchModule } from './search/search.module';
 import { VouchersModule } from './vouchers/vouchers.module';
 import { MetaModule } from './meta/meta.module';
 import { SearchIndexModule } from './search-index/search-index.module';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ItemMasterModule } from './item-master/item-master.module';
 
 @Module({
@@ -40,6 +40,8 @@ import { ItemMasterModule } from './item-master/item-master.module';
         DEBIT_CREDIT_TOLERANCE: Joi.number().default(0.01),
         EXPECTED_TALLY_COMPANY_SUBSTR: Joi.string().default('shankara'),
         OPENSEARCH_NODE: Joi.string().default('http://127.0.0.1:9200'),
+        JOBS_DATABASE_PORT: Joi.number().default(5432),
+        TRUST_PROXY: Joi.boolean().default(false),
       }),
     }),
     TypeOrmModule.forRootAsync({
@@ -69,7 +71,7 @@ import { ItemMasterModule } from './item-master/item-master.module';
     SearchIndexModule,
     ItemMasterModule,
     ThrottlerModule.forRoot({
-      throttlers: [{ name: 'default', ttl: 60000, limit: 10 }],
+      throttlers: [{ name: 'default', ttl: 60000, limit: 100 }],
     }),
   ],
   providers: [
@@ -80,6 +82,10 @@ import { ItemMasterModule } from './item-master/item-master.module';
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
     },
   ],
 })

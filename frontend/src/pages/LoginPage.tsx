@@ -39,7 +39,7 @@ export function LoginPage() {
       navigate(nextPath, { replace: true });
     } catch (err) {
       if (isApiError(err) && err.status === 401) {
-        setError('Invalid credentials');
+        setError('That email or password is not right.');
       } else if (isApiError(err) && err.status === 429) {
         setError('Too many attempts, wait a moment.');
       } else if (isApiError(err)) {
@@ -57,13 +57,14 @@ export function LoginPage() {
       <DotField variant="dark" />
       <div className="login-card">
         <BrandLogo height={46} />
-        <p className="login-tagline">Book of record. Search-first.</p>
+        <p className="login-tagline">Find a bill. Find an item.</p>
         <form onSubmit={(e) => void onSubmit(e)} className="login-form">
           <label className="field">
             <span>Email</span>
             <input
               type="email"
               autoComplete="username"
+              autoFocus
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required

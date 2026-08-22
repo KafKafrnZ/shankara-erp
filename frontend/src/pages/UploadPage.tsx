@@ -3,6 +3,7 @@ import type { DragEvent, FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth.ts';
 import { Money } from '../components/Money.tsx';
+import { LiveSourcePane } from '../components/LiveSourcePane.tsx';
 import {
   fetchBatch,
   fetchBatchRejects,
@@ -16,7 +17,7 @@ import { formatDisplayDiff, formatINR, isOutOfBalance } from '../lib/format.ts';
 import { rejectPlainLanguage, uploadErrorPlain } from '../lib/reject-codes.ts';
 import type { Batch, RejectRow, UploadResult } from '../lib/types.ts';
 
-const ACCEPT = '.csv,.xlsx,.xls,.zip';
+const ACCEPT = '.csv,.xlsx,.xls';
 
 function statusPill(status: Batch['status'] | UploadResult['status']) {
   if (status === 'published') return <span className="pill pill-success">Published</span>;
@@ -47,6 +48,7 @@ export function UploadPage() {
   const [expandedRaw, setExpandedRaw] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmingPublish, setConfirmingPublish] = useState(false);
+  const [confirmingHold, setConfirmingHold] = useState(false);
 
   const loadBatch = useCallback(async (id: number, page = 1) => {
     const next = await fetchBatch(id);
@@ -79,6 +81,7 @@ export function UploadPage() {
 
   useEffect(() => {
     setConfirmingPublish(false);
+    setConfirmingHold(false);
   }, [batch?.id]);
 
   useEffect(() => {
@@ -113,8 +116,8 @@ export function UploadPage() {
   const acceptFile = (next: File | undefined | null) => {
     if (!next) return;
     const lower = next.name.toLowerCase();
-    if (!lower.endsWith('.csv') && !lower.endsWith('.xls') && !lower.endsWith('.xlsx') && !lower.endsWith('.zip')) {
-      setError('Accept .xlsx, .xls, .csv, .zip only');
+    if (!lower.endsWith('.csv') && !lower.endsWith('.xls') && !lower.endsWith('.xlsx')) {
+      setError('Please choose an Excel or CSV file (.xlsx, .xls, .csv). Unzip first if you have a .zip.');
       return;
     }
     setError('');
@@ -190,28 +193,28 @@ export function UploadPage() {
       setError(isApiError(err) ? err.message : 'Hold failed');
     } finally {
       setBusy(false);
+      setConfirmingHold(false);
     }
   };
 
   return (
     <div className="upload-page">
-      <h1 className="page-title">Upload</h1>
-      <p className="muted page-lead">Day Book or Sales Register export (.csv, .xlsx, .xls, .zip).</p>
+      <h1 className="page-title">Upload day book</h1>
+      <p className="muted page-lead">Day Book or Sales Register from Tally (.xlsx, .xls or .csv).</p>
+      <LiveSourcePane kind="vouchers" refreshKey={`${batch?.id ?? ''}:${batch?.status ?? ''}`} />
 
       <form className="upload-form" onSubmit={(e) => void onUpload(e)}>
         <label className="field">
-          <span>Company ID</span>
-          <input
+          <span>Company</span>
+          <select
             value={companyId}
             onChange={(e) => setCompanyId(e.target.value)}
-            list="company-ids"
             required
-          />
-          <datalist id="company-ids">
+          >
             {companies.map((id) => (
-              <option key={id} value={id} />
+              <option key={id} value={id}>{id}</option>
             ))}
-          </datalist>
+          </select>
         </label>
         <label className="field">
           <span>Branch ID (optional)</span>
@@ -296,10 +299,10 @@ export function UploadPage() {
           {canPublish && confirmingPublish && (
             <div className="banner banner-warning">
               <p className="banner-title">Publish {batch.acceptedRows.toLocaleString()} vouchers to the live register?</p>
-              <p>Everyone searching vouchers will see these right away. This cannot be undone from here.</p>
+              <p>Everyone searching bills will see these right away.</p>
               <div className="batch-actions">
                 <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void onPublish()}>
-                  {busy ? 'Publishing…' : 'Yes, publish'}
+                  {busy ? 'Working…' : 'Yes, make live'}
                 </button>
                 <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setConfirmingPublish(false)}>
                   Cancel
@@ -308,23 +311,39 @@ export function UploadPage() {
             </div>
           )}
 
-          {!confirmingPublish && (
+          {canHold && confirmingHold && (
+            <div className="banner banner-warning">
+              <p className="banner-title">Take this day book off everyone’s search?</p>
+              <p>Bills from this file will no longer show up until you make it live again.</p>
+              <div className="batch-actions">
+                <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void onHold()}>
+                  {busy ? 'Working…' : 'Yes, take it off'}
+                </button>
+                <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setConfirmingHold(false)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!confirmingPublish && !confirmingHold && (
           <div className="batch-actions">
+            {canPublish && (
             <button
               type="button"
               className="btn btn-primary"
-              disabled={!canPublish || busy}
-              title={oob ? 'Out of balance — publish is blocked' : undefined}
-              onClick={() => (canPublish ? setConfirmingPublish(true) : undefined)}
+              disabled={busy}
+              onClick={() => setConfirmingPublish(true)}
             >
-              Publish
+              Make live
             </button>
+            )}
             {canHold && (
-              <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => void onHold()}>
-                Hold
+              <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setConfirmingHold(true)}>
+                Take off search
               </button>
             )}
-            {oob && <span className="pill pill-critical">Publish blocked</span>}
+            {oob && <span className="pill pill-critical">Cannot make live — out of balance</span>}
           </div>
           )}
         </section>

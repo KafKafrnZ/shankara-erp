@@ -14,6 +14,8 @@ function escapeLike(value: string): string {
 
 @Injectable()
 export class ItemSearchService {
+  private facetsCache: { at: number; value: { mainGroup: { value: string; count: number }[]; subGroup: { value: string; count: number }[]; brand: { value: string; count: number }[] } } | null = null;
+
   constructor(
     @InjectRepository(ItemMasterRow) private rowRepo: Repository<ItemMasterRow>,
   ) {}
@@ -73,14 +75,26 @@ export class ItemSearchService {
     const limit = query.limit || 50;
     const offset = query.offset || 0;
 
-    qb.take(limit).skip(offset);
-
-    const [hits, total] = await qb.getManyAndCount();
+    const hits = await qb.clone().take(limit).skip(offset).getMany();
+    // Last (or only) page is already fully known — skip the 300ms+ COUNT
+    // over 177k rows. Full pages still need a total for the pager. An
+    // offset past the end would otherwise report total === offset.
+    let total = offset + hits.length;
+    if (hits.length === limit || (offset > 0 && hits.length === 0)) {
+      total = await qb.getCount();
+    }
 
     return { total, hits };
   }
 
+  clearFacetsCache() {
+    this.facetsCache = null;
+  }
+
   async getFacets() {
+    if (this.facetsCache && Date.now() - this.facetsCache.at < 60_000) {
+      return this.facetsCache.value;
+    }
     // NOTE: each facet must use andWhere() for its IS NOT NULL condition.
     // QueryBuilder.where() REPLACES the whole existing WHERE clause, so an
     // earlier version of this silently dropped the current/published
@@ -105,7 +119,9 @@ export class ItemSearchService {
       facet('brand'),
     ]);
 
-    return { mainGroup, subGroup, brand };
+    const value = { mainGroup, subGroup, brand };
+    this.facetsCache = { at: Date.now(), value };
+    return value;
   }
 
   async getItemHistory(itemCode: string) {

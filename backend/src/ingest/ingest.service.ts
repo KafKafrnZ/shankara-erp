@@ -1,4 +1,4 @@
-import { Injectable, Inject, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, Inject, Logger, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, IsNull } from 'typeorm';
 import { SourceFile } from './entities/source-file.entity';
@@ -26,6 +26,8 @@ import { formatCents, parseAmountToCents } from './parse/money';
 
 @Injectable()
 export class IngestService {
+  private readonly logger = new Logger(IngestService.name);
+
   constructor(
     @InjectRepository(SourceFile)
     private sourceFileRepo: Repository<SourceFile>,
@@ -56,12 +58,18 @@ export class IngestService {
   ) {
     if (!file) throw new BadRequestException('File is required');
 
-    const validExtensions = ['.xlsx', '.xls', '.csv', '.zip'];
+    const validExtensions = ['.xlsx', '.xls', '.csv'];
     const ext = file.originalname.substring(file.originalname.lastIndexOf('.')).toLowerCase();
+    if (ext === '.zip') {
+      throw new BadRequestException(
+        'Please unzip the file first and upload the Excel or CSV inside. A .zip cannot be read as a day book.',
+      );
+    }
     if (!validExtensions.includes(ext)) throw new BadRequestException('Invalid file extension');
 
     const sha256 = crypto.createHash('sha256').update(file.buffer).digest('hex');
 
+    let rejectedReuse: IngestBatch | null = null;
     let sourceFile = await this.sourceFileRepo.findOne({ where: { sha256 } });
     if (sourceFile) {
       const existingBatch = await this.ingestBatchRepo.findOne({
@@ -69,18 +77,22 @@ export class IngestService {
         order: { uploadedAt: 'DESC' },
       });
       if (existingBatch) {
-        await this.auditService.log({
-          userId, action: 'upload', entityType: 'ingest_batch', entityId: existingBatch.id, ip, userAgent, meta: { sha256, duplicate: true },
-        });
+        if (existingBatch.status === 'rejected') {
+          rejectedReuse = existingBatch;
+        } else {
+          await this.auditService.log({
+            userId, action: 'upload', entityType: 'ingest_batch', entityId: existingBatch.id, ip, userAgent, meta: { sha256, duplicate: true },
+          });
 
-        return {
-          batchId: Number(existingBatch.id),
-          status: 'duplicate',
-          duplicate: true,
-          sha256,
-          originalName: sourceFile.originalName,
-          bytes: Number(sourceFile.byteSize),
-        };
+          return {
+            batchId: Number(existingBatch.id),
+            status: 'duplicate',
+            duplicate: true,
+            sha256,
+            originalName: sourceFile.originalName,
+            bytes: Number(sourceFile.byteSize),
+          };
+        }
       }
       // source_file is shared across both pipelines (voucher and item
       // master), so a hit here with no matching ingest_batch means these
@@ -113,17 +125,41 @@ export class IngestService {
         await queryRunner.manager.save(sourceFile);
       }
 
-      // Steward is a global role (seed company_id is null) and may set any companyId.
-      const batch = this.ingestBatchRepo.create({
-        sourceFileId: sourceFile.id, fileSha256: sha256,
-        tallyCompany: (parsedResult.detect as any).titleCompany || 'unknown',
-        companyId: dto.companyId, branchId: dto.branchId,
-        reportType: parsedResult.detect.ok && (parsedResult.detect as any).reportType === 'SALES_REGISTER' ? 'SALES_REGISTER' : 'DAY_BOOK',
-        periodFrom: (parsedResult.detect as any).periodFrom ? new Date((parsedResult.detect as any).periodFrom) : null,
-        periodTo: (parsedResult.detect as any).periodTo ? new Date((parsedResult.detect as any).periodTo) : null,
-        status: 'held', uploadedBy: userId,
-        errorSummary: null,
-      });await queryRunner.manager.save(batch);
+      let batch: IngestBatch;
+      if (rejectedReuse) {
+        await queryRunner.manager.query(
+          `DELETE FROM voucher_line WHERE voucher_id IN (SELECT id FROM voucher WHERE batch_id = $1)`,
+          [rejectedReuse.id],
+        );
+        await queryRunner.manager.query(`DELETE FROM voucher WHERE batch_id = $1`, [rejectedReuse.id]);
+        await queryRunner.manager.query(`DELETE FROM ingest_reject WHERE batch_id = $1`, [rejectedReuse.id]);
+        batch = rejectedReuse;
+        batch.tallyCompany = (parsedResult.detect as any).titleCompany || 'unknown';
+        batch.companyId = dto.companyId;
+        batch.branchId = dto.branchId ?? null;
+        batch.reportType = parsedResult.detect.ok && (parsedResult.detect as any).reportType === 'SALES_REGISTER' ? 'SALES_REGISTER' : 'DAY_BOOK';
+        batch.periodFrom = (parsedResult.detect as any).periodFrom ? new Date((parsedResult.detect as any).periodFrom) : null;
+        batch.periodTo = (parsedResult.detect as any).periodTo ? new Date((parsedResult.detect as any).periodTo) : null;
+        batch.status = 'held';
+        batch.uploadedBy = userId;
+        batch.errorSummary = null;
+        batch.publishedAt = null;
+        batch.publishedBy = null;
+        await queryRunner.manager.save(batch);
+      } else {
+        // Steward is a global role (seed company_id is null) and may set any companyId.
+        batch = this.ingestBatchRepo.create({
+          sourceFileId: sourceFile.id, fileSha256: sha256,
+          tallyCompany: (parsedResult.detect as any).titleCompany || 'unknown',
+          companyId: dto.companyId, branchId: dto.branchId,
+          reportType: parsedResult.detect.ok && (parsedResult.detect as any).reportType === 'SALES_REGISTER' ? 'SALES_REGISTER' : 'DAY_BOOK',
+          periodFrom: (parsedResult.detect as any).periodFrom ? new Date((parsedResult.detect as any).periodFrom) : null,
+          periodTo: (parsedResult.detect as any).periodTo ? new Date((parsedResult.detect as any).periodTo) : null,
+          status: 'held', uploadedBy: userId,
+          errorSummary: null,
+        });
+        await queryRunner.manager.save(batch);
+      }
 
       if (!parsedResult.detect.ok) {
         batch.status = 'rejected';
@@ -193,24 +229,22 @@ export class IngestService {
 
           let tallyGuid = crypto.createHash('sha256').update(`${dto.companyId}:${v.vchType}:${v.vchNo}:${v.vchDate}`).digest('hex');
 
-          const currentVoucher = await queryRunner.manager.findOne(Voucher, {
-            where: {
-              companyId: dto.companyId,
-              vchType: v.vchType,
-              vchNo: v.vchNo,
-              vchDate: v.vchDate,
-              validTo: IsNull(),
-              isDeleted: false,
-            }
-          });
+          const currentVoucher = await queryRunner.manager
+            .createQueryBuilder(Voucher, 'v')
+            .innerJoin('v.batch', 'b')
+            .where('v.company_id = :companyId', { companyId: dto.companyId })
+            .andWhere('v.vch_type = :vchType', { vchType: v.vchType })
+            .andWhere('v.vch_no = :vchNo', { vchNo: v.vchNo })
+            .andWhere('v.vch_date = :vchDate', { vchDate: v.vchDate })
+            .andWhere('v.valid_to IS NULL')
+            .andWhere('v.is_deleted = false')
+            .andWhere("b.status = 'published'")
+            .getOne();
 
           if (currentVoucher) {
             tallyGuid = currentVoucher.tallyGuid || tallyGuid;
             if (currentVoucher.extra.fingerprint === fingerprint) {
               continue;
-            } else {
-              currentVoucher.validTo = new Date();
-              await queryRunner.manager.save(currentVoucher);
             }
           }
 
@@ -339,20 +373,36 @@ export class IngestService {
   }
 
   async publishBatch(batchId: number, userId: string, ip?: string, userAgent?: string) {
-    const batch = await this.ingestBatchRepo.findOneBy({ id: String(batchId) });
-    if (!batch) throw new NotFoundException('Batch not found');
-    if (batch.status === 'published' || batch.status === 'rejected') {
-      throw new ConflictException('NOT_HELD');
-    }
-    if (batch.errorSummary && batch.errorSummary.startsWith('OUT_OF_BALANCE')) {
-      throw new ConflictException('OUT_OF_BALANCE');
-    }
-
-    batch.status = 'published';
-    batch.publishedAt = new Date();
-    batch.publishedBy = userId;
-
     await this.dataSource.transaction(async manager => {
+      await manager.query(`SELECT pg_advisory_xact_lock(hashtext('voucher-publish'))`);
+      const batch = await manager.findOneBy(IngestBatch, { id: String(batchId) });
+      if (!batch) throw new NotFoundException('Batch not found');
+      if (batch.status !== 'held') {
+        throw new ConflictException('NOT_HELD');
+      }
+      if (batch.errorSummary && batch.errorSummary.startsWith('OUT_OF_BALANCE')) {
+        throw new ConflictException('OUT_OF_BALANCE');
+      }
+
+      await manager.query(
+        `UPDATE voucher AS v
+            SET valid_to = NOW()
+           FROM ingest_batch AS b
+          WHERE v.batch_id = b.id
+            AND b.status = 'published'
+            AND v.valid_to IS NULL
+            AND v.batch_id <> $1
+            AND (v.company_id, v.vch_type, v.vch_no, v.vch_date) IN (
+              SELECT company_id, vch_type, vch_no, vch_date
+                FROM voucher
+               WHERE batch_id = $1 AND valid_to IS NULL AND is_deleted = false
+            )`,
+        [String(batchId)],
+      );
+
+      batch.status = 'published';
+      batch.publishedAt = new Date();
+      batch.publishedBy = userId;
       await manager.save(batch);
       await this.auditService.log({
         userId, action: 'publish', entityType: 'ingest_batch', entityId: batchId, ip, userAgent, meta: {}
@@ -403,22 +453,46 @@ export class IngestService {
         await this.indexer.deleteByIds(superseded.map(v => String(v.id)));
       }
     } catch (err) {
-      console.error('Indexer failed during publishBatch', err);
+      this.logger.error('Indexer failed during publishBatch', err instanceof Error ? err.stack : String(err));
     }
 
     return this.getBatch(batchId);
   }
 
   async holdBatch(batchId: number, userId: string, ip?: string, userAgent?: string) {
-    const batch = await this.ingestBatchRepo.findOneBy({ id: String(batchId) });
-    if (!batch) throw new NotFoundException('Batch not found');
-    if (batch.status === 'held') return this.getBatch(batchId);
-
-    batch.status = 'held';
-    batch.publishedAt = null;
-    batch.publishedBy = null;
-
     await this.dataSource.transaction(async manager => {
+      await manager.query(`SELECT pg_advisory_xact_lock(hashtext('voucher-publish'))`);
+      const batch = await manager.findOneBy(IngestBatch, { id: String(batchId) });
+      if (!batch) throw new NotFoundException('Batch not found');
+      if (batch.status === 'held') return;
+      if (batch.status !== 'published') {
+        throw new BadRequestException('Only a live day book can be taken off search');
+      }
+
+      await manager.query(
+        `UPDATE voucher AS prev
+            SET valid_to = NULL
+           FROM (
+             SELECT DISTINCT ON (v.company_id, v.vch_type, v.vch_no, v.vch_date) v.id
+               FROM voucher v
+               JOIN ingest_batch b ON b.id = v.batch_id
+              WHERE v.batch_id <> $1
+                AND v.is_deleted = false
+                AND v.valid_to IS NOT NULL
+                AND b.status = 'published'
+                AND (v.company_id, v.vch_type, v.vch_no, v.vch_date) IN (
+                  SELECT company_id, vch_type, vch_no, vch_date FROM voucher WHERE batch_id = $1
+                )
+              ORDER BY v.company_id, v.vch_type, v.vch_no, v.vch_date, v.valid_from DESC, v.id DESC
+           ) AS pick
+          WHERE prev.id = pick.id
+            AND prev.valid_to IS NOT NULL`,
+        [String(batchId)],
+      );
+
+      batch.status = 'held';
+      batch.publishedAt = null;
+      batch.publishedBy = null;
       await manager.save(batch);
       await this.auditService.log({
         userId, action: 'unpublish', entityType: 'ingest_batch', entityId: batchId, ip, userAgent, meta: {}
@@ -429,7 +503,7 @@ export class IngestService {
     try {
       await this.indexer.deleteByBatchId(String(batchId));
     } catch (err) {
-      console.error('Indexer failed during holdBatch', err);
+      this.logger.error('Indexer failed during holdBatch', err instanceof Error ? err.stack : String(err));
     }
 
     return this.getBatch(batchId);

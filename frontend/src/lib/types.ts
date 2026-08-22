@@ -35,6 +35,30 @@ export type SearchResponse = {
   hits: SearchHit[];
 };
 
+export type LiveSourceFile = {
+  batchId: number;
+  originalName: string;
+  publishedAt: string | null;
+  liveRows: number;
+  companyId?: string | null;
+  periodFrom?: string | null;
+  periodTo?: string | null;
+};
+
+export type PendingSourceFile = {
+  batchId: number;
+  originalName: string;
+  status: string;
+  acceptedRows: number;
+  uploadedAt: string | null;
+  companyId?: string;
+};
+
+export type LiveSources = {
+  items: { live: LiveSourceFile[]; pending: PendingSourceFile[] };
+  vouchers: { live: LiveSourceFile[]; pending: PendingSourceFile[] };
+};
+
 export type VoucherLine = {
   lineNo: number;
   ledgerName: string;

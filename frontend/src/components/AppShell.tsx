@@ -1,9 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth.ts';
 import { displayNameFromEmail, formatAsOf, initialsFromName } from '../lib/format.ts';
+import { readHowToDismissed, writeHowToDismissed } from '../lib/howto.ts';
 import { LogoChip } from './BrandLogo.tsx';
 import { DotField } from './DotField.tsx';
+import { HowToOverlay } from './HowToOverlay.tsx';
 
 // Icon travels with the word everywhere — someone learning this system by
 // watching, not reading, recognizes the shape of "Search" and "Upload"
@@ -31,16 +33,24 @@ export function AppShell() {
   const { user, asOf, logout, refreshAsOf } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const [howtoOpen, setHowtoOpen] = useState(() => !readHowToDismissed());
 
   useEffect(() => {
     void refreshAsOf();
   }, [location.pathname, refreshAsOf]);
 
+  const dismissHowto = () => {
+    writeHowToDismissed();
+    setHowtoOpen(false);
+  };
+
   if (!user) return null;
 
   const name = user.displayName?.trim() || displayNameFromEmail(user.email);
   const companyLabel = user.companyId ?? 'All companies';
-  const asOfLabel = asOf ? `As of ${formatAsOf(asOf)}` : 'No published data';
+  const asOfLabel = asOf ? `As of ${formatAsOf(asOf)}` : 'No live data yet';
+  const roleLabel =
+    user.role === 'steward' ? 'Office admin' : user.role === 'finance' ? 'Accounts' : user.role === 'branch' ? 'Branch' : user.role;
 
   const onLogout = async () => {
     await logout();
@@ -56,28 +66,28 @@ export function AppShell() {
           <span className="header-wordmark">Shankara ERP</span>
           <nav className="header-nav" aria-label="Primary">
             <div className="nav-group">
-              <span className="nav-group-label">Vouchers</span>
+              <span className="nav-group-label">Day book</span>
               <div className="nav-group-links">
-                <NavLink to="/" end className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-                  <SearchIcon /> Search
+                <NavLink to="/" end className={({ isActive }) => (isActive ? 'nav-link nav-link-vouchers active' : 'nav-link nav-link-vouchers')}>
+                  <SearchIcon /> Find bill
                 </NavLink>
                 {user.role === 'steward' && (
-                  <NavLink to="/upload" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-                    <UploadIcon /> Upload
+                  <NavLink to="/upload" className={({ isActive }) => (isActive ? 'nav-link nav-link-vouchers active' : 'nav-link nav-link-vouchers')}>
+                    <UploadIcon /> Upload day book
                   </NavLink>
                 )}
               </div>
             </div>
             <div className="nav-divider" aria-hidden="true" />
             <div className="nav-group">
-              <span className="nav-group-label">Catalog</span>
+              <span className="nav-group-label">Items</span>
               <div className="nav-group-links">
-                <NavLink to="/catalog" end className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-                  <SearchIcon /> Search
+                <NavLink to="/catalog" end className={({ isActive }) => (isActive ? 'nav-link nav-link-catalog active' : 'nav-link nav-link-catalog')}>
+                  <SearchIcon /> Find item
                 </NavLink>
                 {user.role === 'steward' && (
-                  <NavLink to="/catalog/upload" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-                    <UploadIcon /> Upload
+                  <NavLink to="/catalog/upload" className={({ isActive }) => (isActive ? 'nav-link nav-link-catalog active' : 'nav-link nav-link-catalog')}>
+                    <UploadIcon /> Upload items
                   </NavLink>
                 )}
               </div>
@@ -85,13 +95,21 @@ export function AppShell() {
           </nav>
         </div>
         <div className="header-right">
+          <button type="button" className="btn btn-ghost" onClick={() => setHowtoOpen(true)}>
+            How to use
+          </button>
+          {user.role === 'steward' && (
+            <NavLink to="/admin/users" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
+              People
+            </NavLink>
+          )}
           <span className="pill pill-info">{companyLabel}</span>
           <span className={`as-of${asOf ? '' : ' muted'}`}>{asOfLabel}</span>
           <span className="user-chip" title={user.email}>
             <span className="avatar" aria-hidden="true">{initialsFromName(name)}</span>
             <span className="user-meta">
               <span className="user-name">{name}</span>
-              <span className="user-role">{user.role}</span>
+              <span className="user-role">{roleLabel}</span>
             </span>
           </span>
           <button type="button" className="btn btn-ghost" onClick={() => void onLogout()}>
@@ -102,6 +120,7 @@ export function AppShell() {
       <main className="app-main">
         <Outlet />
       </main>
+      <HowToOverlay open={howtoOpen} onClose={dismissHowto} />
     </div>
   );
 }

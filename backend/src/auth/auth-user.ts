@@ -30,4 +30,5 @@ export function toAuthUser(user: {
 export type JwtPayload = {
   sub: string;
   role: AuthRole;
+  ver: number;
 };

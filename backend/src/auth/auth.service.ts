@@ -8,16 +8,21 @@ import { JwtPayload, toAuthUser } from './auth-user';
 
 @Injectable()
 export class AuthService {
+  private readonly dummyHash: string;
+
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
     private auditService: AuditService,
-  ) {}
+  ) {
+    this.dummyHash = bcrypt.hashSync('not-a-real-password', 10);
+  }
 
   async login(loginDto: LoginDto, ip?: string, userAgent?: string) {
     const user = await this.usersService.findByEmail(loginDto.email);
     
     if (!user || !user.isActive) {
+      await bcrypt.compare(loginDto.password, this.dummyHash);
       await this.auditService.log({
         userId: user ? user.id : null,
         action: 'login_failed',
@@ -54,7 +59,7 @@ export class AuthService {
       meta: { email: user.email },
     });
 
-    const payload: JwtPayload = { sub: user.id, role: user.role };
+    const payload: JwtPayload = { sub: user.id, role: user.role, ver: user.tokenVersion };
     const accessToken = this.jwtService.sign(payload);
 
     return {
@@ -64,6 +69,7 @@ export class AuthService {
   }
 
   async logout(userId: string, ip?: string, userAgent?: string) {
+    await this.usersService.bumpTokenVersion(userId);
     await this.auditService.log({
       userId,
       action: 'logout',

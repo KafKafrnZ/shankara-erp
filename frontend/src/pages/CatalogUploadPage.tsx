@@ -5,6 +5,7 @@ import { api, isApiError } from '../lib/api.ts';
 import { describeItemBatchError, describeItemSkip } from '../lib/item-skip-codes.ts';
 import { formatAsOf } from '../lib/format.ts';
 import { useAuth } from '../auth/useAuth.ts';
+import { LiveSourcePane } from '../components/LiveSourcePane.tsx';
 
 interface UploadResponse {
   batchId: number;
@@ -54,16 +55,21 @@ export function CatalogUploadPage() {
   const [batch, setBatch] = useState<ItemBatch | null>(null);
   const [skips, setSkips] = useState<any[]>([]);
   const [skipTotal, setSkipTotal] = useState(0);
+  const [skipOffset, setSkipOffset] = useState(0);
+  const SKIP_PAGE = 50;
   const [busy, setBusy] = useState(false);
   const [expandedRaw, setExpandedRaw] = useState<number | null>(null);
   const [pollTimeout, setPollTimeout] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
   const [confirmingPublish, setConfirmingPublish] = useState(false);
+  const [confirmingHold, setConfirmingHold] = useState(false);
 
   const { user } = useAuth();
 
   useEffect(() => {
     setConfirmingPublish(false);
+    setConfirmingHold(false);
+    setSkipOffset(0);
     if (!batchIdParam) {
       setBatch(null);
       setPollTimeout(false);
@@ -95,20 +101,33 @@ export function CatalogUploadPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batch?.id, batch?.status, retryNonce]);
 
+  useEffect(() => {
+    if (!batch || batch.status === 'processing') return;
+    if (!(batch.skippedRows > 0 || batch.skippedSheets > 0)) {
+      setSkips([]);
+      setSkipTotal(0);
+      return;
+    }
+    let cancelled = false;
+    const page = Math.floor(skipOffset / SKIP_PAGE) + 1;
+    api<{ items: unknown[]; total: number }>(`/api/item-batches/${batch.id}/skips?page=${page}&pageSize=${SKIP_PAGE}`)
+      .then((res) => {
+        if (cancelled) return;
+        setSkips(res.items);
+        setSkipTotal(res.total);
+      })
+      .catch(() => {
+        if (!cancelled) setSkips([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [batch?.id, batch?.status, batch?.skippedRows, batch?.skippedSheets, skipOffset]);
+
   const loadBatch = async (id: number) => {
     try {
       const b = await api<ItemBatch>(`/api/item-batches/${id}`);
       setBatch(b);
-      if (b.status === 'held' || b.status === 'published' || b.status === 'rejected') {
-        if (b.skippedRows > 0 || b.skippedSheets > 0) {
-          const res = await api<{ data: any[]; total: number }>(`/api/item-batches/${id}/skips`);
-          setSkips(res.data);
-          setSkipTotal(res.total);
-        } else {
-          setSkips([]);
-          setSkipTotal(0);
-        }
-      }
     } catch (err) {
       if (isApiError(err) && err.status === 404) {
         setBatch(null);
@@ -214,6 +233,7 @@ export function CatalogUploadPage() {
       setError(isApiError(err) ? err.message : 'Hold failed');
     } finally {
       setBusy(false);
+      setConfirmingHold(false);
     }
   };
 
@@ -235,8 +255,9 @@ export function CatalogUploadPage() {
 
   return (
     <div className="upload-page">
-      <h1 className="page-title">Catalog Upload</h1>
-      <p className="muted page-lead">Item Master or Catalog export from Tally (.xlsx).</p>
+      <h1 className="page-title">Upload items</h1>
+      <p className="muted page-lead">Item list from Tally. Excel .xlsx only.</p>
+      <LiveSourcePane kind="items" refreshKey={`${batch?.id ?? ''}:${batch?.status ?? ''}`} />
 
       <form className="upload-form" onSubmit={(e) => void onUpload(e)}>
         <div
@@ -267,7 +288,7 @@ export function CatalogUploadPage() {
             {statusPill(batch.status)}
           </div>
           {batch.status === 'processing' && !pollTimeout && (
-            <p className="muted">Processing your file...</p>
+            <p className="muted">Reading your file… you can wait here.</p>
           )}
           {batch.status === 'processing' && pollTimeout && (
             <div className="banner banner-critical">
@@ -278,7 +299,7 @@ export function CatalogUploadPage() {
               </button>
             </div>
           )}
-          {batch.status !== 'processing' && (
+          {(batch.status !== 'processing' || batch.totalRows > 0) && (
             <dl className="meta-grid">
               <div>
                 <dt>Uploaded</dt>
@@ -312,10 +333,10 @@ export function CatalogUploadPage() {
           {canPublish && confirmingPublish && (
             <div className="banner banner-warning">
               <p className="banner-title">Publish {batch.acceptedRows.toLocaleString()} items to the live catalog?</p>
-              <p>Everyone searching the catalog will see these items right away. This cannot be undone from here.</p>
+              <p>Everyone searching items will see these right away.</p>
               <div className="batch-actions">
                 <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void onPublish()}>
-                  {busy ? 'Publishing…' : 'Yes, publish'}
+                  {busy ? 'Working…' : 'Yes, make live'}
                 </button>
                 <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setConfirmingPublish(false)}>
                   Cancel
@@ -324,19 +345,36 @@ export function CatalogUploadPage() {
             </div>
           )}
 
-          {batch.status !== 'processing' && !confirmingPublish && (
+          {canHold && confirmingHold && (
+            <div className="banner banner-warning">
+              <p className="banner-title">Take these items off everyone’s search?</p>
+              <p>The previous live list will come back. You can make this file live again later.</p>
+              <div className="batch-actions">
+                <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void onHold()}>
+                  {busy ? 'Working…' : 'Yes, take it off'}
+                </button>
+                <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setConfirmingHold(false)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {batch.status !== 'processing' && !confirmingPublish && !confirmingHold && (
             <div className="batch-actions">
+              {canPublish && (
               <button
                 type="button"
                 className="btn btn-primary"
-                disabled={!canPublish || busy}
-                onClick={() => (canPublish ? setConfirmingPublish(true) : undefined)}
+                disabled={busy}
+                onClick={() => setConfirmingPublish(true)}
               >
-                Publish
+                Make live
               </button>
+              )}
               {canHold && (
-                <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => void onHold()}>
-                  Hold
+                <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setConfirmingHold(true)}>
+                  Take off search
                 </button>
               )}
             </div>
@@ -344,7 +382,7 @@ export function CatalogUploadPage() {
         </section>
       )}
 
-      {batch && batch.status !== 'processing' && skips.length > 0 && (
+      {batch && batch.status !== 'processing' && skipTotal > 0 && (
         <section className="rejects">
           <h2>Rows or sheets that were skipped ({skipTotal})</h2>
           <table className="results-table">
@@ -377,6 +415,29 @@ export function CatalogUploadPage() {
               ))}
             </tbody>
           </table>
+          <div className="pager">
+            <span className="muted">
+              {skipTotal === 0 ? '0' : `${skipOffset + 1}–${Math.min(skipOffset + SKIP_PAGE, skipTotal)}`} of {skipTotal}
+            </span>
+            <div className="pager-btns">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={skipOffset <= 0}
+                onClick={() => setSkipOffset(Math.max(0, skipOffset - SKIP_PAGE))}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={skipOffset + SKIP_PAGE >= skipTotal}
+                onClick={() => setSkipOffset(skipOffset + SKIP_PAGE)}
+              >
+                Next
+              </button>
+            </div>
+          </div>
         </section>
       )}
     </div>

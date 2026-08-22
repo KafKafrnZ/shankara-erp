@@ -104,6 +104,21 @@ describe('ItemMasterController (e2e)', () => {
       .set('Authorization', `Bearer ${stewardToken}`);
     expect(heldBatchRes.body.acceptedRows).toBeGreaterThan(0);
 
+    const originalName = path.basename(xlsxPath);
+    const heldSources = await request(app.getHttpServer())
+      .get('/api/meta/live-sources')
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .expect(200);
+    expect(heldSources.body.items.pending.some((f: { originalName: string }) => f.originalName === originalName)).toBe(true);
+    expect(heldSources.body.items.live.some((f: { originalName: string }) => f.originalName === originalName)).toBe(false);
+
+    const financeHeldSources = await request(app.getHttpServer())
+      .get('/api/meta/live-sources')
+      .set('Authorization', `Bearer ${financeToken}`)
+      .expect(200);
+    expect(financeHeldSources.body.items.pending).toEqual([]);
+    expect(financeHeldSources.body.items.live.some((f: { originalName: string }) => f.originalName === originalName)).toBe(false);
+
     // finance/branch calling GET on held batch gets 404
     await request(app.getHttpServer())
       .get(`/api/item-batches/${batchId}`)
@@ -124,6 +139,35 @@ describe('ItemMasterController (e2e)', () => {
       .expect(201); // Post returns 201 by default unless configured
     expect(searchRes.body.hits.length).toBeGreaterThan(0);
 
+    const liveSources = await request(app.getHttpServer())
+      .get('/api/meta/live-sources')
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .expect(200);
+    // Identical fixture bytes (apart from a trailing nonce) match an
+    // already-published catalog in this scratch DB, so this batch may
+    // insert zero new live rows. The pane lists files that actually
+    // contribute to search, not empty published shells.
+    expect(liveSources.body.items.pending.some((f: { originalName: string }) => f.originalName === originalName)).toBe(false);
+    const liveRowCount = await db.query(
+      `SELECT count(*)::int AS n FROM item_master_row WHERE batch_id = $1 AND valid_to IS NULL AND is_deleted = false`,
+      [batchId],
+    );
+    const n = liveRowCount.rows[0].n;
+    if (n > 0) {
+      const liveFile = liveSources.body.items.live.find((f: { originalName: string }) => f.originalName === originalName);
+      expect(liveFile).toBeTruthy();
+      expect(liveFile.liveRows).toBe(n);
+    } else {
+      expect(liveSources.body.items.live.some((f: { liveRows: number }) => f.liveRows > 0)).toBe(true);
+    }
+
+    const financeLive = await request(app.getHttpServer())
+      .get('/api/meta/live-sources')
+      .set('Authorization', `Bearer ${financeToken}`)
+      .expect(200);
+    expect(financeLive.body.items.live.some((f: { liveRows: number }) => f.liveRows > 0)).toBe(true);
+    expect(financeLive.body.items.pending).toEqual([]);
+
     // Duplicate upload
     const dupRes = await request(app.getHttpServer())
       .post('/api/item-uploads')
@@ -132,6 +176,24 @@ describe('ItemMasterController (e2e)', () => {
       .expect(200);
 
     expect(dupRes.body.duplicate).toBe(true);
+
+    await db.query(
+      `INSERT INTO item_master_skip (batch_id, sheet_name, source_row_no, code, message, raw)
+       VALUES ($1, 'A', 1, 'X', 'one', '{}'), ($1, 'A', 2, 'X', 'two', '{}'), ($1, 'A', 3, 'X', 'three', '{}')`,
+      [batchId],
+    );
+    const page1 = await request(app.getHttpServer())
+      .get(`/api/item-batches/${batchId}/skips?page=1&pageSize=2`)
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .expect(200);
+    const page2 = await request(app.getHttpServer())
+      .get(`/api/item-batches/${batchId}/skips?page=2&pageSize=2`)
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .expect(200);
+    expect(page1.body.items).toHaveLength(2);
+    expect(page2.body.items.length).toBeGreaterThan(0);
+    expect(page1.body.items[0].sourceRowNo).not.toBe(page2.body.items[0].sourceRowNo);
+    expect(page1.body.total).toBeGreaterThanOrEqual(3);
   }, 40000); // Allow up to 40s
 
   it('a batch stuck in processing can be recovered', async () => {

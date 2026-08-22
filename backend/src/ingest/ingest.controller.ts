@@ -1,6 +1,7 @@
 import { Controller, Post, Get, Param, Query, UseInterceptors, UploadedFile, Body, Req, Res, BadRequestException, HttpCode } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
+import { Throttle } from '@nestjs/throttler';
 import { Roles } from '../auth/roles.decorator';
 import { IngestService } from './ingest.service';
 import { UploadDto } from './dto/upload.dto';
@@ -15,6 +16,7 @@ export class IngestController {
   
   @Roles('steward')
   @Post()
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   // Multer buffers the whole upload in memory, so an unbounded limit here
   // let a single large file exhaust the process. Matches the catalog cap.
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 50 * 1024 * 1024 } }))
@@ -56,7 +58,9 @@ export class BatchesController {
     @Query('page') page: string = '1',
     @Query('pageSize') pageSize: string = '50',
   ) {
-    return this.ingestService.getBatchRejects(id, Number(page), Number(pageSize));
+    const pageNum = Math.max(1, parseInt(String(page), 10) || 1);
+    const size = Math.min(100, Math.max(1, parseInt(String(pageSize), 10) || 50));
+    return this.ingestService.getBatchRejects(id, pageNum, size);
   }
 
   @Roles('steward')

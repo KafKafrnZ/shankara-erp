@@ -3,13 +3,17 @@ import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api.ts';
 import { ItemDrawer } from '../components/ItemDrawer.tsx';
+import { LiveSourcePane } from '../components/LiveSourcePane.tsx';
+import { itemPrimaryKey } from '../lib/item-key.ts';
 
 
 interface SearchHit {
   id: string;
   itemCode: string;
-  catalogueNo: string;
+  catalogueNo: string | null;
   sapItemCode: string | null;
+  alias: string | null;
+  layoutKey: string | null;
   brand: string | null;
   itemName: string;
   mainGroup: string | null;
@@ -106,60 +110,54 @@ export function CatalogPage() {
   useEffect(() => {
     if (draftQ === q) return;
     const t = window.setTimeout(() => {
-      writeParams({ q: draftQ || null, offset: 0 });
+      writeParams({ q: draftQ || null, offset: 0, browse: draftQ ? false : null });
     }, 300);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftQ]);
 
-  const runSearch = async (overrides?: { browse?: boolean }) => {
-    setError('');
+  useEffect(() => {
+    if (!isResults) {
+      setResult(null);
+      return;
+    }
+    let cancelled = false;
     setLoading(true);
-    try {
-      const isBrowse = overrides?.browse ?? browse;
-      const payload: any = { limit: PAGE_SIZE, offset };
-      if (!isBrowse) {
+    setError('');
+    (async () => {
+      try {
+        const payload: Record<string, string | number> = { limit: PAGE_SIZE, offset };
         if (q) payload.q = q;
         if (mainGroup) payload.mainGroup = mainGroup;
         if (subGroup) payload.subGroup = subGroup;
         if (brand) payload.brand = brand;
-      } else {
-        if (mainGroup) payload.mainGroup = mainGroup;
-        if (subGroup) payload.subGroup = subGroup;
-        if (brand) payload.brand = brand;
+        const res = await api<SearchResult>('/api/item-search', { method: 'POST', body: JSON.stringify(payload) });
+        if (cancelled) return;
+        setResult(res);
+      } catch (err: unknown) {
+        if (cancelled) return;
+        setResult(null);
+        setError(err instanceof Error ? err.message : 'Search failed');
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      
-      const res = await api<SearchResult>('/api/item-search', { method: 'POST', body: JSON.stringify(payload) });
-      setResult(res);
-    } catch (err: any) {
-      setError(err.message || 'Search failed');
-    } finally {
-      setLoading(false);
-    }
-  };
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isResults, q, mainGroup, subGroup, brand, offset, browse]);
 
   useEffect(() => {
-    if (isResults) {
-      runSearch();
-    } else {
-      setResult(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, mainGroup, subGroup, brand, offset, browse]);
-
-  useEffect(() => {
-    if (isResults) {
-      setDraftQ(q);
-      setDraftMainGroup(mainGroup);
-      setDraftSubGroup(subGroup);
-      setDraftBrand(brand);
-    }
-  }, [isResults, q, mainGroup, subGroup, brand]);
+    setDraftQ(q);
+    setDraftMainGroup(mainGroup);
+    setDraftSubGroup(subGroup);
+    setDraftBrand(brand);
+  }, [q, mainGroup, subGroup, brand]);
 
   const writeParams = (updates: Record<string, string | number | boolean | null>) => {
     const next = new URLSearchParams(searchParams);
     for (const [k, v] of Object.entries(updates)) {
-      if (v === null || v === '') next.delete(k);
+      if (v === null || v === '' || v === false) next.delete(k);
       else next.set(k, String(v));
     }
     setParams(next, { replace: false });
@@ -240,7 +238,7 @@ export function CatalogPage() {
   return (
     <div className="catalog-page">
       <header className="catalog-header">
-        <h1 className="catalog-title">Item Catalog</h1>
+        <h1 className="catalog-title">Find an item</h1>
         <form className="catalog-search-form" onSubmit={onSubmit}>
           <div className="search-hero-wrap catalog-search-input-wrap">
             <input
@@ -253,7 +251,6 @@ export function CatalogPage() {
               aria-label="Search catalog"
               maxLength={200}
             />
-            <kbd className="search-shortcut-hint" aria-hidden="true">/</kbd>
           </div>
           <button type="submit" className="btn btn-primary">Search</button>
           {isResults ? (
@@ -271,6 +268,8 @@ export function CatalogPage() {
           )}
         </form>
       </header>
+
+      <LiveSourcePane kind="items" />
 
       {!isResults && (
         <p className="catalog-hint">Search by item code, name, or catalogue number — or browse the full catalog and filter by group and brand.</p>
@@ -300,7 +299,7 @@ export function CatalogPage() {
                 <table className="results-table">
                   <thead>
                     <tr>
-                      <th>Item Code</th>
+                      <th>Code</th>
                       <th>Item Name</th>
                       <th>Brand</th>
                       <th>Group / Sub</th>
@@ -308,7 +307,9 @@ export function CatalogPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {result.hits.map((hit) => (
+                    {result.hits.map((hit) => {
+                      const key = itemPrimaryKey(hit);
+                      return (
                       <tr
                         key={hit.id}
                         className="clickable"
@@ -316,12 +317,15 @@ export function CatalogPage() {
                         onClick={() => openItem(hit.itemCode)}
                         onKeyDown={(e) => onRowKey(e, hit.itemCode)}
                       >
-                        <td className="nowrap">{highlight(hit.itemCode, q)}</td>
+                        <td className="nowrap td-key">
+                          <span className="key-kicker">{key.label}</span>
+                          <span className="key-value">{highlight(key.value, q)}</span>
+                        </td>
                         <td>
                           <div className="particulars">
                             <span className="party">{highlight(hit.itemName, q)}</span>
                             <span className="narration">
-                              {hit.catalogueNo ? <>Cat no: {highlight(hit.catalogueNo, q)}</> : '—'}
+                              {hit.catalogueNo && key.kind !== 'catalogueNo' ? <>Cat no: {highlight(hit.catalogueNo, q)}</> : '—'}
                             </span>
                           </div>
                         </td>
@@ -332,7 +336,8 @@ export function CatalogPage() {
                         </td>
                         <td>{hit.uom || '—'}</td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
                 <div className="pager">
