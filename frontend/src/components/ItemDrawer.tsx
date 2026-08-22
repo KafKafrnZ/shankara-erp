@@ -66,17 +66,33 @@ export function ItemDrawer({ itemCode, onClose }: Props) {
     };
   }, [itemCode]);
 
-  const copyNo = async () => {
+  const current = history[0];
+
+  // Copies every field shown on screen, not just the item code — the code
+  // alone (which for master-code-layout rows literally IS the alias) isn't
+  // what someone pastes into a WhatsApp message to a supplier or into an
+  // Excel sheet; they want the whole item, the way it looks on the drawer.
+  const copyDetails = async () => {
+    if (!current) return;
+    const lines = [
+      current.itemName,
+      current.brand && `Brand: ${current.brand}`,
+      current.catalogueNo && `Catalogue No: ${current.catalogueNo}`,
+      current.sapItemCode && `SAP Item Code: ${current.sapItemCode}`,
+      current.alias && `Alias: ${current.alias}`,
+      current.mainGroup && `Main Group: ${current.mainGroup}`,
+      current.subGroup && `Sub Group: ${current.subGroup}`,
+      current.uom && `UOM: ${current.uom}`,
+      current.hsnDescription && `HSN Description: ${current.hsnDescription}`,
+    ].filter(Boolean);
     try {
-      await navigator.clipboard.writeText(itemCode);
+      await navigator.clipboard.writeText(lines.join('\n'));
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     } catch {
       /* clipboard may be blocked */
     }
   };
-
-  const current = history[0];
 
   return (
     <>
@@ -96,8 +112,8 @@ export function ItemDrawer({ itemCode, onClose }: Props) {
           </div>
           <div className="drawer-actions">
             {current && (
-              <button type="button" className="btn btn-ghost" onClick={() => void copyNo()}>
-                {copied ? 'Copied' : 'Copy code'}
+              <button type="button" className="btn btn-ghost" onClick={() => void copyDetails()}>
+                {copied ? 'Copied' : 'Copy details'}
               </button>
             )}
             <button type="button" className="btn btn-ghost" onClick={onClose}>
@@ -106,6 +122,7 @@ export function ItemDrawer({ itemCode, onClose }: Props) {
           </div>
         </div>
 
+        <div className="drawer-body">
         {error && <p className="empty-copy">{error}</p>}
         {loading && !error && <p className="muted">Loading…</p>}
         {/* The API returns [] (not a 404) for an unknown code, so without
@@ -118,7 +135,7 @@ export function ItemDrawer({ itemCode, onClose }: Props) {
         )}
 
         {!loading && !error && current && (
-          <div className="drawer-body">
+          <>
             <dl className="meta-grid">
               <div>
                 <dt>Catalogue No</dt>
@@ -174,8 +191,9 @@ export function ItemDrawer({ itemCode, onClose }: Props) {
                 ))}
               </tbody>
             </table>
-          </div>
+          </>
         )}
+        </div>
       </aside>
     </>
   );

@@ -5,6 +5,28 @@ import { displayNameFromEmail, formatAsOf, initialsFromName } from '../lib/forma
 import { LogoChip } from './BrandLogo.tsx';
 import { DotField } from './DotField.tsx';
 
+// Icon travels with the word everywhere — someone learning this system by
+// watching, not reading, recognizes the shape of "Search" and "Upload"
+// faster than the word itself, and the pair together works for people who
+// read English less confidently than they'd say out loud.
+function SearchIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M11 11L15 15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function UploadIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M8 11V2M8 2L4.5 5.5M8 2L11.5 5.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2.5 12v1.5A1.5 1.5 0 0 0 4 15h8a1.5 1.5 0 0 0 1.5-1.5V12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function AppShell() {
   const { user, asOf, logout, refreshAsOf } = useAuth();
   const location = useLocation();
@@ -33,22 +55,33 @@ export function AppShell() {
           <LogoChip />
           <span className="header-wordmark">Shankara ERP</span>
           <nav className="header-nav" aria-label="Primary">
-            <NavLink to="/" end className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-              Vouchers
-            </NavLink>
-            <NavLink to="/catalog" end className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-              Catalog
-            </NavLink>
-            {user.role === 'steward' && (
-              <>
-                <NavLink to="/upload" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-                  Upload
+            <div className="nav-group">
+              <span className="nav-group-label">Vouchers</span>
+              <div className="nav-group-links">
+                <NavLink to="/" end className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
+                  <SearchIcon /> Search
                 </NavLink>
-                <NavLink to="/catalog/upload" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-                  Catalog Upload
+                {user.role === 'steward' && (
+                  <NavLink to="/upload" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
+                    <UploadIcon /> Upload
+                  </NavLink>
+                )}
+              </div>
+            </div>
+            <div className="nav-divider" aria-hidden="true" />
+            <div className="nav-group">
+              <span className="nav-group-label">Catalog</span>
+              <div className="nav-group-links">
+                <NavLink to="/catalog" end className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
+                  <SearchIcon /> Search
                 </NavLink>
-              </>
-            )}
+                {user.role === 'steward' && (
+                  <NavLink to="/catalog/upload" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
+                    <UploadIcon /> Upload
+                  </NavLink>
+                )}
+              </div>
+            </div>
           </nav>
         </div>
         <div className="header-right">

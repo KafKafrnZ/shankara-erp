@@ -58,10 +58,12 @@ export function CatalogUploadPage() {
   const [expandedRaw, setExpandedRaw] = useState<number | null>(null);
   const [pollTimeout, setPollTimeout] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
+  const [confirmingPublish, setConfirmingPublish] = useState(false);
 
   const { user } = useAuth();
 
   useEffect(() => {
+    setConfirmingPublish(false);
     if (!batchIdParam) {
       setBatch(null);
       setPollTimeout(false);
@@ -197,6 +199,7 @@ export function CatalogUploadPage() {
       setError(isApiError(err) ? err.message : 'Publish failed');
     } finally {
       setBusy(false);
+      setConfirmingPublish(false);
     }
   };
 
@@ -302,13 +305,32 @@ export function CatalogUploadPage() {
             </div>
           )}
 
-          {batch.status !== 'processing' && (
+          {/* Publish makes this batch's items visible to every search in the
+              app at once — a wrong click here is the single most consequential
+              action on this page, so it gets a plain-language confirm step
+              instead of firing immediately. */}
+          {canPublish && confirmingPublish && (
+            <div className="banner banner-warning">
+              <p className="banner-title">Publish {batch.acceptedRows.toLocaleString()} items to the live catalog?</p>
+              <p>Everyone searching the catalog will see these items right away. This cannot be undone from here.</p>
+              <div className="batch-actions">
+                <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void onPublish()}>
+                  {busy ? 'Publishing…' : 'Yes, publish'}
+                </button>
+                <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setConfirmingPublish(false)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {batch.status !== 'processing' && !confirmingPublish && (
             <div className="batch-actions">
               <button
                 type="button"
                 className="btn btn-primary"
                 disabled={!canPublish || busy}
-                onClick={() => void onPublish()}
+                onClick={() => (canPublish ? setConfirmingPublish(true) : undefined)}
               >
                 Publish
               </button>

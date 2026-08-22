@@ -20,8 +20,10 @@ body {
   margin: 0;
   min-width: 1280px;
   font-family: var(--font-ui);
-  font-size: 14px;
-  line-height: 1.45;
+  /* Bumped from 14px per the non-tech/elderly-readability pass — NNG's
+     research on older users converges around a 16px floor for body text. */
+  font-size: 15px;
+  line-height: 1.5;
   color: var(--ink);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
@@ -112,30 +114,70 @@ button {
 
 .header-nav {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: 10px;
   margin-left: 12px;
 }
 
-.nav-link {
-  padding: 6px 10px;
-  border-radius: var(--radius);
-  color: var(--muted);
-  font-weight: 500;
-  transition: color var(--transition-fast), background-color var(--transition-fast);
+/* Two clusters (Vouchers, Catalog), each its own search+upload pipeline —
+   grouped and labeled so the two "Upload" links can't be mistaken for each
+   other, which is what caused a wrong-page upload during a live demo. The
+   group label (serif, static) and the links inside it (bordered pills) are
+   deliberately different textures: a non-tech reader should be able to tell
+   "this is a section name" from "this is a button" without hovering. */
+.nav-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.nav-link:hover,
-.nav-link.active {
-  color: var(--ink);
+.nav-group-label {
+  font-family: var(--font-editorial);
+  font-style: italic;
+  font-size: 15px;
+  color: var(--sb-ink);
+  padding: 0 2px;
+}
+
+.nav-group-links {
+  display: flex;
+  gap: 6px;
+}
+
+.nav-divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 4px 6px;
   background: var(--sb-mist);
 }
 
-.nav-link.active {
-  box-shadow: inset 0 -2px 0 var(--accent);
+.nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--sb-line);
+  background: var(--sb-white);
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 13px;
+  transition: color var(--transition-fast), background-color var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
 }
 
-.nav-link:active:not(.active) {
-  background: #e2e2e2;
+.nav-link:hover {
+  border-color: var(--accent);
+  background: var(--sb-mist);
+}
+
+.nav-link:active {
+  transform: scale(0.97);
+}
+
+.nav-link.active {
+  color: var(--sb-white);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .as-of {
@@ -617,7 +659,9 @@ th.num {
   width: 100%;
   border-collapse: collapse;
   background: var(--surface);
-  font-size: 13px;
+  /* Was 13px, smaller than body — the actual item/voucher data a
+     non-tech stakeholder squints at is the last place to shrink type. */
+  font-size: 15px;
 }
 
 .results-table th,
@@ -625,14 +669,14 @@ th.num {
 .lines-table th,
 .lines-table td {
   border-bottom: 1px solid var(--line);
-  padding: 8px 10px;
+  padding: 10px 12px;
   text-align: left;
   vertical-align: top;
 }
 
 .results-table thead th,
 .lines-table thead th {
-  font-size: 11px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--muted);
@@ -740,11 +784,16 @@ mark.search-hl {
 
 /* ——— Drawer ——— */
 
+/* Backdrop is near-black + blurred so the panel unmistakably lifts off the
+   page — a non-tech user should never wonder "is this a new screen or did
+   the old one just change a bit". */
 .drawer-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(20, 20, 20, 0.45);
+  background: rgba(10, 10, 10, 0.6);
+  backdrop-filter: blur(2px);
   z-index: 80;
+  animation: drawer-backdrop-in var(--transition-base) both;
 }
 
 .drawer {
@@ -755,40 +804,81 @@ mark.search-hl {
   max-width: 100%;
   height: 100vh;
   background: var(--surface);
-  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.12);
-  padding: 20px 24px 40px;
+  border-left: 4px solid var(--accent);
+  box-shadow: -16px 0 40px rgba(0, 0, 0, 0.35);
   overflow-y: auto;
   z-index: 90;
+  animation: drawer-slide-in var(--transition-base) both;
 }
 
+@keyframes drawer-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes drawer-slide-in {
+  from { transform: translateX(24px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawer-backdrop,
+  .drawer {
+    animation: none;
+  }
+}
+
+/* Dark header band (Shankara ink + red), visually a different "surface"
+   than the white body below it and the page behind it — the two-tone split
+   is the cue that this a distinct object floating above the page. */
 .drawer-head {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   align-items: flex-start;
-  margin-bottom: 16px;
+  margin: 0 0 16px;
+  padding: 20px 24px;
+  background: var(--sb-ink);
+  border-bottom: 3px solid var(--accent);
 }
 
 .drawer-kicker {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--sb-red-soft);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
+  font-weight: 700;
 }
 
 .drawer-title {
-  margin: 2px 0 0;
-  font-size: 20px;
+  margin: 4px 0 0;
+  font-size: 21px;
+  color: var(--sb-white);
 }
 
 .drawer-sub {
   margin: 4px 0 0;
-  color: var(--muted);
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.drawer-body {
+  padding: 4px 24px 40px;
 }
 
 .drawer-actions {
   display: flex;
-  gap: 4px;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.drawer-actions .btn-ghost {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--sb-white);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.drawer-actions .btn-ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.18);
 }
 
 .meta-grid {
@@ -924,6 +1014,16 @@ mark.search-hl {
   border-color: var(--critical-line);
 }
 
+.banner-warning {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  border-color: var(--warning-line);
+}
+
+.banner-warning .batch-actions {
+  margin-top: 10px;
+}
+
 .raw-json {
   background: var(--sb-mist);
   padding: 8px;
@@ -966,8 +1066,27 @@ mark.search-hl {
     width: 100%;
     height: auto;
     box-shadow: none;
+    border-left: none;
     overflow: visible;
     padding: 0;
+  }
+
+  /* The dark ink/red header band is a screen-only accent — on paper it
+     would just burn toner and wash out the text against a black fill. */
+  .drawer-head {
+    background: none;
+    border-bottom: 1px solid #000;
+    padding: 0 0 12px;
+  }
+
+  .drawer-kicker,
+  .drawer-title,
+  .drawer-sub {
+    color: #000 !important;
+  }
+
+  .drawer-body {
+    padding: 12px 0 0;
   }
 
   .app-main {

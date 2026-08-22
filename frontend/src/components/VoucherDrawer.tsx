@@ -110,11 +110,12 @@ export function VoucherDrawer({ id, onClose, printOnOpen, onPrinted }: Props) {
           </div>
         </div>
 
+        <div className="drawer-body print-voucher">
         {error && <p className="empty-copy">{error}</p>}
         {!error && !data && <p className="muted">Loading…</p>}
 
         {data && (
-          <div className="drawer-body print-voucher">
+          <>
             <dl className="meta-grid">
               <div>
                 <dt>Date</dt>
@@ -163,8 +164,9 @@ export function VoucherDrawer({ id, onClose, printOnOpen, onPrinted }: Props) {
             </table>
 
             {publishedLine && <p className="provenance">{publishedLine}</p>}
-          </div>
+          </>
         )}
+        </div>
       </aside>
     </>
   );
