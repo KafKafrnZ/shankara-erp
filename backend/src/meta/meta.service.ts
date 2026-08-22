@@ -36,35 +36,49 @@ export class MetaService {
   }
 
   async getAsOf(user: any) {
-    let query = `SELECT MAX(published_at) as "asOf", MAX(id) as "batchId" FROM ingest_batch WHERE status = 'published'`;
     const params: unknown[] = [];
-    if (user.role === 'branch') {
-      query += ` AND company_id = $1`;
-      params.push(user.companyId);
-    } else if (user.role === 'finance' && user.companyId) {
-      query += ` AND company_id = $1`;
+    const companyScoped =
+      user.role === 'branch' || (user.role === 'finance' && user.companyId);
+    if (companyScoped) {
       params.push(user.companyId);
     }
-    
-    // The max() needs a bit more care to also get the matching batchId.
-    // If there's a tie, highest ID wins.
-    let fullQuery = `
+
+    // If a tie, highest ID wins.
+    let voucherQuery = `
       SELECT published_at as "asOf", id as "batchId"
       FROM ingest_batch
       WHERE status = 'published'
     `;
-    if (user.role === 'branch' || (user.role === 'finance' && user.companyId)) {
-      fullQuery += ` AND company_id = $1`;
+    if (companyScoped) {
+      voucherQuery += ` AND company_id = $1`;
     }
-    fullQuery += ` ORDER BY published_at DESC NULLS LAST, id DESC LIMIT 1`;
-    
-    const res = await this.dataSource.query(fullQuery, params);
-    if (res.length === 0) {
+    voucherQuery += ` ORDER BY published_at DESC NULLS LAST, id DESC LIMIT 1`;
+
+    // The catalog is the other half of this system and is not company-scoped
+    // (item_master_batch has no company_id). Without it the header read
+    // "No published data" while the catalog was serving 170k+ published
+    // items — a flat contradiction for anyone looking at the screen.
+    const catalogQuery = `
+      SELECT published_at as "asOf", id as "batchId"
+      FROM item_master_batch
+      WHERE status = 'published'
+      ORDER BY published_at DESC NULLS LAST, id DESC LIMIT 1
+    `;
+
+    const [voucherRes, catalogRes] = await Promise.all([
+      this.dataSource.query(voucherQuery, params),
+      this.dataSource.query(catalogQuery),
+    ]);
+
+    const candidates = [voucherRes[0], catalogRes[0]]
+      .filter((r) => r && r.asOf)
+      .map((r) => ({ asOf: new Date(r.asOf), batchId: Number(r.batchId) }));
+
+    if (candidates.length === 0) {
       return { asOf: null, batchId: null };
     }
-    return {
-      asOf: res[0].asOf ? new Date(res[0].asOf).toISOString() : null,
-      batchId: Number(res[0].batchId),
-    };
+
+    const latest = candidates.reduce((a, b) => (b.asOf > a.asOf ? b : a));
+    return { asOf: latest.asOf.toISOString(), batchId: latest.batchId };
   }
 }

@@ -1,8 +1,16 @@
-import { Injectable, Req, Res } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Brackets } from 'typeorm';
 import { ItemMasterRow } from './entities/item-master-row.entity';
-import { ItemMasterBatch } from './entities/item-master-batch.entity';
+
+// "%" and "_" are LIKE wildcards, and "\" is the escape character itself.
+// Left unescaped, a search for "100%" matches every row that starts with
+// "100" (and a bare "%" matches the entire catalog) — item names in a
+// tile/sanitaryware catalog genuinely contain these characters, so a
+// user's literal search has to stay literal.
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
 
 @Injectable()
 export class ItemSearchService {
@@ -10,30 +18,54 @@ export class ItemSearchService {
     @InjectRepository(ItemMasterRow) private rowRepo: Repository<ItemMasterRow>,
   ) {}
 
-  async search(query: { q?: string, mainGroup?: string, subGroup?: string, brand?: string, limit?: number, offset?: number }) {
-    const qb = this.rowRepo.createQueryBuilder('row')
-      .innerJoin('row.batch', 'batch')
-      .where('row.valid_to IS NULL')
-      .andWhere('row.is_deleted = false')
+  /** Only current, non-deleted rows from published batches are ever visible. */
+  private visibleRows(alias = 'row') {
+    return this.rowRepo.createQueryBuilder(alias)
+      .innerJoin(`${alias}.batch`, 'batch')
+      .where(`${alias}.valid_to IS NULL`)
+      .andWhere(`${alias}.is_deleted = false`)
       .andWhere("batch.status = 'published'");
+  }
 
-    if (query.q) {
+  async search(query: { q?: string, mainGroup?: string, subGroup?: string, brand?: string, limit?: number, offset?: number }) {
+    const qb = this.visibleRows();
+
+    // Trim before testing for emptiness: values pasted out of Excel or Tally
+    // almost always carry leading/trailing whitespace, and an untrimmed
+    // "  ABC123  " matches nothing at all.
+    const term = query.q?.trim();
+    if (term) {
+      const like = `%${escapeLike(term)}%`;
+      // Every ID-shaped field a user might type gets searched, not just the
+      // one chosen as item_code for a given sheet layout. The three layouts
+      // (SAP Item Master, Master Code, CP & Sani/Others) each pick a
+      // different column as the "primary" identifier — sap_item_code,
+      // alias, or a direct code column — so a code that's the primary
+      // identifier in one file is a secondary field in another. Searching
+      // all of them means the same query works regardless of which sheet
+      // an item came from.
       qb.andWhere(new Brackets(sqb => {
-        sqb.where('row.item_code ILIKE :q', { q: `%${query.q}%` })
-           .orWhere('row.item_name ILIKE :q', { q: `%${query.q}%` })
-           .orWhere('row.catalogue_no ILIKE :q', { q: `%${query.q}%` })
-           .orWhere('row.brand ILIKE :q', { q: `%${query.q}%` });
+        sqb.where("row.item_code ILIKE :q ESCAPE '\\'", { q: like })
+           .orWhere("row.item_name ILIKE :q ESCAPE '\\'", { q: like })
+           .orWhere("row.catalogue_no ILIKE :q ESCAPE '\\'", { q: like })
+           .orWhere("row.brand ILIKE :q ESCAPE '\\'", { q: like })
+           .orWhere("row.alias ILIKE :q ESCAPE '\\'", { q: like })
+           .orWhere("row.sap_item_code ILIKE :q ESCAPE '\\'", { q: like })
+           .orWhere("row.hsn_description ILIKE :q ESCAPE '\\'", { q: like });
       }));
     }
 
-    if (query.mainGroup) {
-      qb.andWhere('row.main_group = :mainGroup', { mainGroup: query.mainGroup });
+    const mainGroup = query.mainGroup?.trim();
+    if (mainGroup) {
+      qb.andWhere('row.main_group = :mainGroup', { mainGroup });
     }
-    if (query.subGroup) {
-      qb.andWhere('row.sub_group = :subGroup', { subGroup: query.subGroup });
+    const subGroup = query.subGroup?.trim();
+    if (subGroup) {
+      qb.andWhere('row.sub_group = :subGroup', { subGroup });
     }
-    if (query.brand) {
-      qb.andWhere('row.brand = :brand', { brand: query.brand });
+    const brand = query.brand?.trim();
+    if (brand) {
+      qb.andWhere('row.brand = :brand', { brand });
     }
 
     qb.orderBy('row.item_code', 'ASC');
@@ -49,36 +81,45 @@ export class ItemSearchService {
   }
 
   async getFacets() {
-    // Quick grouping for facets
-    const qbBase = this.rowRepo.createQueryBuilder('row')
-      .innerJoin('row.batch', 'batch')
-      .where('row.valid_to IS NULL')
-      .andWhere('row.is_deleted = false')
-      .andWhere("batch.status = 'published'");
-    
-    // In a real app we'd do 3 separate count queries or one big facet query
-    const mainGroups = await qbBase.clone().select('row.main_group', 'value').addSelect('COUNT(*)', 'count').where('row.main_group IS NOT NULL').groupBy('row.main_group').getRawMany();
-    const subGroups = await qbBase.clone().select('row.sub_group', 'value').addSelect('COUNT(*)', 'count').where('row.sub_group IS NOT NULL').groupBy('row.sub_group').getRawMany();
-    const brands = await qbBase.clone().select('row.brand', 'value').addSelect('COUNT(*)', 'count').where('row.brand IS NOT NULL').groupBy('row.brand').getRawMany();
-
-    return {
-      mainGroup: mainGroups.map(g => ({ value: g.value, count: parseInt(g.count, 10) })),
-      subGroup: subGroups.map(g => ({ value: g.value, count: parseInt(g.count, 10) })),
-      brand: brands.map(g => ({ value: g.value, count: parseInt(g.count, 10) })),
+    // NOTE: each facet must use andWhere() for its IS NOT NULL condition.
+    // QueryBuilder.where() REPLACES the whole existing WHERE clause, so an
+    // earlier version of this silently dropped the current/published
+    // filters and counted superseded rows — surfacing groups in the filter
+    // dropdown that no longer exist in the visible data, which then
+    // returned zero results when picked.
+    const facet = async (column: string) => {
+      const rows = await this.visibleRows()
+        .select(`row.${column}`, 'value')
+        .addSelect('COUNT(*)', 'count')
+        .andWhere(`row.${column} IS NOT NULL`)
+        .andWhere(`row.${column} <> ''`)
+        .groupBy(`row.${column}`)
+        .orderBy('count', 'DESC')
+        .getRawMany();
+      return rows.map((g) => ({ value: g.value, count: parseInt(g.count, 10) }));
     };
+
+    const [mainGroup, subGroup, brand] = await Promise.all([
+      facet('main_group'),
+      facet('sub_group'),
+      facet('brand'),
+    ]);
+
+    return { mainGroup, subGroup, brand };
   }
 
   async getItemHistory(itemCode: string) {
+    const code = itemCode?.trim();
+    if (!code) return [];
     return this.rowRepo.createQueryBuilder('row')
       .innerJoin('row.batch', 'batch')
-      .where('row.item_code = :itemCode', { itemCode })
+      .where('row.item_code = :code', { code })
+      .andWhere('row.is_deleted = false')
       .andWhere("batch.status = 'published'")
-      .orderBy('row.valid_from', 'DESC')
+      // valid_to IS NULL (the live version) must sort first: two rows can
+      // share a valid_from, and the drawer treats history[0] as current.
+      .orderBy('CASE WHEN row.valid_to IS NULL THEN 0 ELSE 1 END', 'ASC')
+      .addOrderBy('row.valid_from', 'DESC')
       .getMany();
-  }
-
-  async exportCsv(query: any, res: any) {
-    // Streaming CSV output logic could go here
-    // Leaving unimplemented for briefness unless greenlit
   }
 }

@@ -5,12 +5,13 @@ import { DotField } from '../components/DotField.tsx';
 
 // Deliberately NOT a real <button> wrapping the whole panel: DotField
 // suppresses its reactive glow over anything matching its interactive
-// selector (which includes "button"), and the glow reacting across this
-// whole panel — the actual visual point of this screen — is exactly what
-// we want. So each panel is a div acting as a big custom button (role +
-// keyboard handling for real accessibility), with only the small CTA
-// label itself marked role="button" so the glow still politely steps
-// aside right on that one label, same as any other real button in the app.
+// selector, and the glow reacting across this whole panel — the actual
+// visual point of this screen — is exactly what we want. So each panel is
+// a div acting as a big custom button (role + keyboard handling for real
+// accessibility), with only the small CTA label opted out of the glow via
+// .dot-suppress (a plain span, not role="button" — it isn't independently
+// interactive, and nesting a second button role inside the panel's own
+// would be invalid a11y).
 export function ChooserPage() {
   const navigate = useNavigate();
 
@@ -39,7 +40,7 @@ export function ChooserPage() {
           <LogoChip height={32} />
           <h2>Day Book &amp; Vouchers</h2>
           <p>The book of record. Search-first, published data only.</p>
-          <span className="chooser-cta chooser-cta-dark" role="button">Enter Vouchers →</span>
+          <span className="chooser-cta chooser-cta-dark dot-suppress">Enter Vouchers →</span>
         </div>
       </div>
 
@@ -58,7 +59,7 @@ export function ChooserPage() {
           <BrandLogo height={32} />
           <h2>Catalog &amp; Uploads</h2>
           <p>Upload, search, and manage any item catalog — fast.</p>
-          <span className="chooser-cta chooser-cta-red" role="button">Enter Catalog →</span>
+          <span className="chooser-cta chooser-cta-red dot-suppress">Enter Catalog →</span>
         </div>
       </div>
     </div>

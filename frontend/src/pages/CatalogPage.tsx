@@ -227,12 +227,22 @@ export function CatalogPage() {
     [draftMainGroup, draftSubGroup, draftBrand, facets],
   );
 
-  if (!isResults) {
-    return (
-      <div className="landing">
-        <h1 className="landing-title">Item Catalog</h1>
-        <form className="landing-form" onSubmit={onSubmit}>
-          <div className="search-hero-wrap">
+  const total = result?.total || 0;
+  const fromRow = total === 0 ? 0 : offset + 1;
+  const toRow = Math.min(offset + PAGE_SIZE, total);
+
+  // The search bar lives in one fixed spot in the tree regardless of
+  // isResults — only the content below it swaps. Landing and results used
+  // to be two separate return statements with their own <form>/<input>,
+  // which meant every search unmounted and remounted the whole page (lost
+  // focus, visible flash, felt "broken"). Same DOM shape throughout means
+  // React just re-renders the parts that changed.
+  return (
+    <div className="catalog-page">
+      <header className="catalog-header">
+        <h1 className="catalog-title">Item Catalog</h1>
+        <form className="catalog-search-form" onSubmit={onSubmit}>
+          <div className="search-hero-wrap catalog-search-input-wrap">
             <input
               ref={inputRef}
               className="search-hero"
@@ -245,134 +255,114 @@ export function CatalogPage() {
             />
             <kbd className="search-shortcut-hint" aria-hidden="true">/</kbd>
           </div>
-          <div className="landing-actions">
-            <button type="submit" className="btn btn-primary">Search</button>
+          <button type="submit" className="btn btn-primary">Search</button>
+          {isResults ? (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setParams(new URLSearchParams(), { replace: false })}
+            >
+              Clear
+            </button>
+          ) : (
             <button type="button" className="btn btn-ghost" onClick={() => writeParams({ browse: true, offset: 0 })}>
               Browse all
             </button>
-          </div>
-          <details className="landing-filters">
-            <summary>Facet filters</summary>
-            {filterBlocks}
-            <button type="submit" className="btn btn-secondary">Apply filters</button>
-          </details>
+          )}
         </form>
-      </div>
-    );
-  }
+      </header>
 
-  const total = result?.total || 0;
-  const fromRow = total === 0 ? 0 : offset + 1;
-  const toRow = Math.min(offset + PAGE_SIZE, total);
+      {!isResults && (
+        <p className="catalog-hint">Search by item code, name, or catalogue number — or browse the full catalog and filter by group and brand.</p>
+      )}
 
-  return (
-    <div className="results-page">
-      <form className="results-search" onSubmit={onSubmit}>
-        <input
-          ref={inputRef}
-          className="search-compact"
-          value={draftQ}
-          onChange={(e) => setDraftQ(e.target.value)}
-          onKeyDown={onSearchKeyDown}
-          placeholder="Search catalog"
-          aria-label="Search catalog"
-          maxLength={200}
-        />
-        <button type="submit" className="btn btn-primary">Search</button>
-        <button
-          type="button"
-          className="btn btn-ghost"
-          onClick={() => setParams(new URLSearchParams(), { replace: false })}
-        >
-          Clear
-        </button>
-      </form>
+      {isResults && (
+        <div className="results-layout">
+          <aside className="filter-rail">
+            <h2>Filters</h2>
+            {filterBlocks}
+            <button type="button" className="btn btn-secondary btn-block" onClick={() => writeParams({ mainGroup: draftMainGroup, subGroup: draftSubGroup, brand: draftBrand, offset: 0 })}>
+              Apply
+            </button>
+          </aside>
 
-      <div className="results-layout">
-        <aside className="filter-rail">
-          <h2>Filters</h2>
-          {filterBlocks}
-          <button type="button" className="btn btn-secondary btn-block" onClick={() => writeParams({ mainGroup: draftMainGroup, subGroup: draftSubGroup, brand: draftBrand, offset: 0 })}>
-            Apply
-          </button>
-        </aside>
-
-        <section className="results-main">
-          {error && <p className="form-error" role="alert">{error}</p>}
-          {loading && <p className="muted">Searching…</p>}
-          {!loading && result && result.hits.length === 0 && (
-            <div className="empty-state">
-              <h2>No items matched</h2>
-              <p className="empty-copy">Try loosening the filters or search terms.</p>
-            </div>
-          )}
-          {!loading && result && result.hits.length > 0 && (
-            <>
-              <table className="results-table">
-                <thead>
-                  <tr>
-                    <th>Item Code</th>
-                    <th>Item Name</th>
-                    <th>Brand</th>
-                    <th>Group / Sub</th>
-                    <th>UOM</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.hits.map((hit) => (
-                    <tr
-                      key={hit.id}
-                      className="clickable"
-                      tabIndex={0}
-                      onClick={() => openItem(hit.itemCode)}
-                      onKeyDown={(e) => onRowKey(e, hit.itemCode)}
-                    >
-                      <td className="nowrap">{highlight(hit.itemCode, q)}</td>
-                      <td>
-                        <div className="particulars">
-                          <span className="party">{highlight(hit.itemName, q)}</span>
-                          <span className="narration">
-                            {hit.catalogueNo ? <>Cat no: {highlight(hit.catalogueNo, q)}</> : '—'}
-                          </span>
-                        </div>
-                      </td>
-                      <td>{hit.brand ? highlight(hit.brand, q) : '—'}</td>
-                      <td>
-                        {hit.mainGroup ? hit.mainGroup : '—'}
-                        {hit.subGroup && ` / ${hit.subGroup}`}
-                      </td>
-                      <td>{hit.uom || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div className="pager">
-                <span className="muted">
-                  {fromRow}–{toRow} of {total}
-                </span>
-                <div className="pager-btns">
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    disabled={offset <= 0}
-                    onClick={() => writeParams({ offset: Math.max(0, offset - PAGE_SIZE) })}
-                  >
-                    Previous
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    disabled={offset + PAGE_SIZE >= total}
-                    onClick={() => writeParams({ offset: offset + PAGE_SIZE })}
-                  >
-                    Next
-                  </button>
-                </div>
+          <section className="results-main">
+            {error && <p className="form-error" role="alert">{error}</p>}
+            {loading && <p className="muted">Searching…</p>}
+            {!loading && result && result.hits.length === 0 && (
+              <div className="empty-state">
+                <h2>No items matched</h2>
+                <p className="empty-copy">Try loosening the filters or search terms.</p>
               </div>
-            </>
-          )}
-        </section>
-      </div>
+            )}
+            {!loading && result && result.hits.length > 0 && (
+              <>
+                <table className="results-table">
+                  <thead>
+                    <tr>
+                      <th>Item Code</th>
+                      <th>Item Name</th>
+                      <th>Brand</th>
+                      <th>Group / Sub</th>
+                      <th>UOM</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.hits.map((hit) => (
+                      <tr
+                        key={hit.id}
+                        className="clickable"
+                        tabIndex={0}
+                        onClick={() => openItem(hit.itemCode)}
+                        onKeyDown={(e) => onRowKey(e, hit.itemCode)}
+                      >
+                        <td className="nowrap">{highlight(hit.itemCode, q)}</td>
+                        <td>
+                          <div className="particulars">
+                            <span className="party">{highlight(hit.itemName, q)}</span>
+                            <span className="narration">
+                              {hit.catalogueNo ? <>Cat no: {highlight(hit.catalogueNo, q)}</> : '—'}
+                            </span>
+                          </div>
+                        </td>
+                        <td>{hit.brand ? highlight(hit.brand, q) : '—'}</td>
+                        <td>
+                          {hit.mainGroup ? hit.mainGroup : '—'}
+                          {hit.subGroup && ` / ${hit.subGroup}`}
+                        </td>
+                        <td>{hit.uom || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="pager">
+                  <span className="muted">
+                    {fromRow}–{toRow} of {total}
+                  </span>
+                  <div className="pager-btns">
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      disabled={offset <= 0}
+                      onClick={() => writeParams({ offset: Math.max(0, offset - PAGE_SIZE) })}
+                    >
+                      Previous
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      disabled={offset + PAGE_SIZE >= total}
+                      onClick={() => writeParams({ offset: offset + PAGE_SIZE })}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </section>
+        </div>
+      )}
 
       {itemCode && (
         <ItemDrawer

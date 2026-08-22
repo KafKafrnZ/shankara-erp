@@ -46,6 +46,7 @@ export function UploadPage() {
   const [rejectPage, setRejectPage] = useState(1);
   const [expandedRaw, setExpandedRaw] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirmingPublish, setConfirmingPublish] = useState(false);
 
   const loadBatch = useCallback(async (id: number, page = 1) => {
     const next = await fetchBatch(id);
@@ -75,6 +76,10 @@ export function UploadPage() {
       cancelled = true;
     };
   }, [user?.role]);
+
+  useEffect(() => {
+    setConfirmingPublish(false);
+  }, [batch?.id]);
 
   useEffect(() => {
     if (user?.role !== 'steward' || !batchIdFromUrl) return;
@@ -169,6 +174,7 @@ export function UploadPage() {
       }
     } finally {
       setBusy(false);
+      setConfirmingPublish(false);
     }
   };
 
@@ -285,13 +291,31 @@ export function UploadPage() {
             </div>
           )}
 
+          {/* Same confirm-before-publish pattern as the catalog upload page —
+              publishing a voucher batch makes it visible everywhere at once. */}
+          {canPublish && confirmingPublish && (
+            <div className="banner banner-warning">
+              <p className="banner-title">Publish {batch.acceptedRows.toLocaleString()} vouchers to the live register?</p>
+              <p>Everyone searching vouchers will see these right away. This cannot be undone from here.</p>
+              <div className="batch-actions">
+                <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void onPublish()}>
+                  {busy ? 'Publishing…' : 'Yes, publish'}
+                </button>
+                <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setConfirmingPublish(false)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!confirmingPublish && (
           <div className="batch-actions">
             <button
               type="button"
               className="btn btn-primary"
               disabled={!canPublish || busy}
               title={oob ? 'Out of balance — publish is blocked' : undefined}
-              onClick={() => void onPublish()}
+              onClick={() => (canPublish ? setConfirmingPublish(true) : undefined)}
             >
               Publish
             </button>
@@ -302,6 +326,7 @@ export function UploadPage() {
             )}
             {oob && <span className="pill pill-critical">Publish blocked</span>}
           </div>
+          )}
         </section>
       )}
 
