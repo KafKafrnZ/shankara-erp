@@ -1,4 +1,4 @@
-import { IsOptional, IsString, Length, IsInt, Min, Max } from 'class-validator';
+import { IsOptional, IsString, Length, IsInt, Min, Max, IsObject } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class ItemSearchDto {
@@ -18,6 +18,12 @@ export class ItemSearchDto {
   @IsOptional()
   @IsString()
   brand?: string;
+
+  /** Field name -> value, from "+ Add filter". Trimmed, capped, and only
+   *  ever bound as a query parameter — see ItemSearchService.search(). */
+  @IsOptional()
+  @IsObject()
+  extra?: Record<string, string>;
 
   @IsOptional()
   @IsInt()

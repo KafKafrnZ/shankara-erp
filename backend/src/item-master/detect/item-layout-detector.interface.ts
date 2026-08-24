@@ -14,6 +14,9 @@ export interface ParsedItemRow {
 
 export interface ItemLayoutDetector {
   key: string;
+  /** Normalized header strings this layout already maps into a fixed
+   *  field — everything else in the file's header row becomes `extra`. */
+  knownHeaderKeys: string[];
   detect(headerRow: string[]): boolean;
   parseRow(row: any[], columns: Record<string, number>): ParsedItemRow | { skip: true; reason: string; code: string };
 }

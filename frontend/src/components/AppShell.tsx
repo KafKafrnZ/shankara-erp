@@ -6,6 +6,7 @@ import { readHowToDismissed, writeHowToDismissed } from '../lib/howto.ts';
 import { LogoChip } from './BrandLogo.tsx';
 import { DotField } from './DotField.tsx';
 import { HowToOverlay } from './HowToOverlay.tsx';
+import { DevPanel } from './DevPanel.tsx';
 
 // Icon travels with the word everywhere — someone learning this system by
 // watching, not reading, recognizes the shape of "Search" and "Upload"
@@ -65,33 +66,14 @@ export function AppShell() {
           <LogoChip />
           <span className="header-wordmark">Shankara ERP</span>
           <nav className="header-nav" aria-label="Primary">
-            <div className="nav-group">
-              <span className="nav-group-label">Day book</span>
-              <div className="nav-group-links">
-                <NavLink to="/" end className={({ isActive }) => (isActive ? 'nav-link nav-link-vouchers active' : 'nav-link nav-link-vouchers')}>
-                  <SearchIcon /> Find bill
-                </NavLink>
-                {user.role === 'steward' && (
-                  <NavLink to="/upload" className={({ isActive }) => (isActive ? 'nav-link nav-link-vouchers active' : 'nav-link nav-link-vouchers')}>
-                    <UploadIcon /> Upload day book
-                  </NavLink>
-                )}
-              </div>
-            </div>
-            <div className="nav-divider" aria-hidden="true" />
-            <div className="nav-group">
-              <span className="nav-group-label">Items</span>
-              <div className="nav-group-links">
-                <NavLink to="/catalog" end className={({ isActive }) => (isActive ? 'nav-link nav-link-catalog active' : 'nav-link nav-link-catalog')}>
-                  <SearchIcon /> Find item
-                </NavLink>
-                {user.role === 'steward' && (
-                  <NavLink to="/catalog/upload" className={({ isActive }) => (isActive ? 'nav-link nav-link-catalog active' : 'nav-link nav-link-catalog')}>
-                    <UploadIcon /> Upload items
-                  </NavLink>
-                )}
-              </div>
-            </div>
+            <NavLink to="/catalog" end className={({ isActive }) => (isActive ? 'nav-link nav-link-catalog active' : 'nav-link nav-link-catalog')}>
+              <SearchIcon /> Find item
+            </NavLink>
+            {user.role === 'steward' && (
+              <NavLink to="/catalog/upload" className={({ isActive }) => (isActive ? 'nav-link nav-link-catalog active' : 'nav-link nav-link-catalog')}>
+                <UploadIcon /> Upload items
+              </NavLink>
+            )}
           </nav>
         </div>
         <div className="header-right">
@@ -121,6 +103,7 @@ export function AppShell() {
         <Outlet />
       </main>
       <HowToOverlay open={howtoOpen} onClose={dismissHowto} />
+      <DevPanel />
     </div>
   );
 }

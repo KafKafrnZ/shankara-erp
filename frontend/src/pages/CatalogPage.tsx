@@ -4,7 +4,10 @@ import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api.ts';
 import { ItemDrawer } from '../components/ItemDrawer.tsx';
 import { LiveSourcePane } from '../components/LiveSourcePane.tsx';
+import { FilterBar } from '../components/FilterBar.tsx';
+import { SelectionTray } from '../components/SelectionTray.tsx';
 import { itemPrimaryKey } from '../lib/item-key.ts';
+import { useAuth } from '../auth/useAuth.ts';
 
 
 interface SearchHit {
@@ -37,7 +40,16 @@ interface Facets {
   brand: FacetOption[];
 }
 
+interface AvailableField {
+  key: string;
+  count: number;
+}
+
 const PAGE_SIZE = 50;
+// "SI No." from an uploaded file can't collide with these, but a real
+// column literally named "brand" or "q" could — the prefix keeps every
+// dynamic filter's URL param distinct from the fixed ones.
+const EXTRA_PARAM_PREFIX = 'xf:';
 
 function highlight(text: string | null | undefined, query: string) {
   if (!text) return null;
@@ -57,7 +69,9 @@ function highlight(text: string | null | undefined, query: string) {
 
 export function CatalogPage() {
   const [searchParams, setParams] = useSearchParams();
-  
+  const { user } = useAuth();
+  const isSteward = user?.role === 'steward';
+
   const q = searchParams.get('q') || '';
   const mainGroup = searchParams.get('mainGroup') || '';
   const subGroup = searchParams.get('subGroup') || '';
@@ -65,31 +79,90 @@ export function CatalogPage() {
   const offset = parseInt(searchParams.get('offset') || '0', 10) || 0;
   const browse = searchParams.get('browse') === 'true';
   const itemCode = searchParams.get('itemCode');
+  const creatingNew = searchParams.get('new') === 'true';
+
+  // Which extra (uploaded-file) columns are active filters right now, and
+  // their committed values — both live in the URL the same way the fixed
+  // filters do, so a shared/bookmarked search link carries them too.
+  const activeExtraKeys = useMemo(
+    () => (searchParams.get('xfields') || '').split('|').filter(Boolean),
+    [searchParams],
+  );
+  const committedExtra = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const key of activeExtraKeys) {
+      const v = searchParams.get(`${EXTRA_PARAM_PREFIX}${key}`) || '';
+      if (v) out[key] = v;
+    }
+    return out;
+  }, [searchParams, activeExtraKeys]);
+  const extraFilterKey = activeExtraKeys.map((k) => `${k}=${committedExtra[k] || ''}`).join('&');
 
   const [draftQ, setDraftQ] = useState(q);
   const [draftMainGroup, setDraftMainGroup] = useState(mainGroup);
   const [draftSubGroup, setDraftSubGroup] = useState(subGroup);
   const [draftBrand, setDraftBrand] = useState(brand);
+  const [draftExtraKeys, setDraftExtraKeys] = useState<string[]>(activeExtraKeys);
+  const [draftExtraValues, setDraftExtraValues] = useState<Record<string, string>>(committedExtra);
 
   const [facets, setFacets] = useState<Facets>({ mainGroup: [], subGroup: [], brand: [] });
+  const [availableFields, setAvailableFields] = useState<AvailableField[]>([]);
+  const [extraOptions, setExtraOptions] = useState<Record<string, FacetOption[]>>({});
   const [result, setResult] = useState<SearchResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // Deliberately not reset by a new search — checking a box, searching
+  // again, and checking more only works if this survives across searches.
+  // Keyed by item code, valued by name — the review list in the tray needs
+  // something more readable than a bare code to show what was picked.
+  const [selected, setSelected] = useState<Map<string, string>>(new Map());
 
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const isResults = browse || q || mainGroup || subGroup || brand;
+  const isResults = browse || q || mainGroup || subGroup || brand || activeExtraKeys.length > 0;
 
   useEffect(() => {
     api<Facets>('/api/item-search/facets')
       .then(setFacets)
       .catch(console.error);
+    api<AvailableField[]>('/api/item-search/fields')
+      .then(setAvailableFields)
+      .catch(console.error);
   }, []);
 
+  // Fetch the value dropdown for any extra filter chip that doesn't have
+  // one cached yet — covers both a freshly-added chip (still draft-only)
+  // and one restored straight from a shared URL (already committed).
+  useEffect(() => {
+    const missing = draftExtraKeys.filter((k) => !(k in extraOptions));
+    if (missing.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(
+        missing.map(async (key): Promise<[string, FacetOption[]]> => {
+          try {
+            const options = await api<FacetOption[]>(`/api/item-search/facets/extra?field=${encodeURIComponent(key)}`);
+            return [key, options];
+          } catch {
+            return [key, []];
+          }
+        }),
+      );
+      if (cancelled) return;
+      setExtraOptions((prev) => {
+        const next = { ...prev };
+        for (const [key, options] of entries) next[key] = options;
+        return next;
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [draftExtraKeys, extraOptions]);
+
   // Auto-focus the search box, and let "/" jump to it from anywhere on this
-  // page — same shortcut the voucher search (SearchPage.tsx) already has;
-  // this brings the catalog search bar to the same standard rather than
-  // leaving it as the one search box in the app without it.
+  // page — a standard search-box shortcut worth having on the one search
+  // box left in the app.
   useEffect(() => {
     inputRef.current?.focus();
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -126,11 +199,12 @@ export function CatalogPage() {
     setError('');
     (async () => {
       try {
-        const payload: Record<string, string | number> = { limit: PAGE_SIZE, offset };
+        const payload: Record<string, string | number | Record<string, string>> = { limit: PAGE_SIZE, offset };
         if (q) payload.q = q;
         if (mainGroup) payload.mainGroup = mainGroup;
         if (subGroup) payload.subGroup = subGroup;
         if (brand) payload.brand = brand;
+        if (Object.keys(committedExtra).length > 0) payload.extra = committedExtra;
         const res = await api<SearchResult>('/api/item-search', { method: 'POST', body: JSON.stringify(payload) });
         if (cancelled) return;
         setResult(res);
@@ -145,14 +219,23 @@ export function CatalogPage() {
     return () => {
       cancelled = true;
     };
-  }, [isResults, q, mainGroup, subGroup, brand, offset, browse]);
+    // committedExtra is derived fresh every render from searchParams;
+    // extraFilterKey is its stable, comparable fingerprint for this effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isResults, q, mainGroup, subGroup, brand, offset, browse, extraFilterKey]);
 
   useEffect(() => {
     setDraftQ(q);
     setDraftMainGroup(mainGroup);
     setDraftSubGroup(subGroup);
     setDraftBrand(brand);
-  }, [q, mainGroup, subGroup, brand]);
+    setDraftExtraKeys(activeExtraKeys);
+    setDraftExtraValues(committedExtra);
+    // activeExtraKeys/committedExtra are derived fresh every render;
+    // extraFilterKey (which also encodes the active key list, since it's
+    // built from activeExtraKeys) is their stable fingerprint for this effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, mainGroup, subGroup, brand, extraFilterKey]);
 
   const writeParams = (updates: Record<string, string | number | boolean | null>) => {
     const next = new URLSearchParams(searchParams);
@@ -173,8 +256,9 @@ export function CatalogPage() {
     inputRef.current?.blur();
   };
 
-  const openItem = (code: string) => writeParams({ itemCode: code });
-  const closeItem = () => writeParams({ itemCode: null });
+  const openItem = (code: string) => writeParams({ itemCode: code, new: null });
+  const closeItem = () => writeParams({ itemCode: null, new: null });
+  const openNewItem = () => writeParams({ new: true, itemCode: null });
 
   const onSearchKeyDown = (e: ReactKeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Escape') {
@@ -190,44 +274,77 @@ export function CatalogPage() {
     if (e.key === 'Enter') openItem(code);
   };
 
-  const filterBlocks = useMemo(
-    () => (
-      <div className="filter-fields">
-        <label className="field">
-          <span>Main Group</span>
-          <select value={draftMainGroup} onChange={(e) => setDraftMainGroup(e.target.value)}>
-            <option value="">Any</option>
-            {facets.mainGroup.map((f) => (
-              <option key={f.value} value={f.value}>{f.value} ({f.count})</option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          <span>Sub Group</span>
-          <select value={draftSubGroup} onChange={(e) => setDraftSubGroup(e.target.value)}>
-            <option value="">Any</option>
-            {facets.subGroup.map((f) => (
-              <option key={f.value} value={f.value}>{f.value} ({f.count})</option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          <span>Brand</span>
-          <select value={draftBrand} onChange={(e) => setDraftBrand(e.target.value)}>
-            <option value="">Any</option>
-            {facets.brand.map((f) => (
-              <option key={f.value} value={f.value}>{f.value} ({f.count})</option>
-            ))}
-          </select>
-        </label>
-      </div>
-    ),
+  const toggleSelect = (code: string, name: string) => {
+    setSelected((prev) => {
+      const next = new Map(prev);
+      if (next.has(code)) next.delete(code);
+      else next.set(code, name);
+      return next;
+    });
+  };
+
+  const fixedFilterFields = useMemo(
+    () => [
+      { key: 'mainGroup', label: 'Main Group', value: draftMainGroup, onChange: setDraftMainGroup, options: facets.mainGroup },
+      { key: 'subGroup', label: 'Sub Group', value: draftSubGroup, onChange: setDraftSubGroup, options: facets.subGroup },
+      { key: 'brand', label: 'Brand', value: draftBrand, onChange: setDraftBrand, options: facets.brand },
+    ],
     [draftMainGroup, draftSubGroup, draftBrand, facets],
   );
 
-  const total = result?.total || 0;
-  const fromRow = total === 0 ? 0 : offset + 1;
-  const toRow = Math.min(offset + PAGE_SIZE, total);
+  const setDraftExtraValue = (key: string, value: string) =>
+    setDraftExtraValues((prev) => ({ ...prev, [key]: value }));
+
+  const extraFilterFields = useMemo(
+    () => draftExtraKeys.map((key) => ({
+      key,
+      label: key,
+      value: draftExtraValues[key] || '',
+      onChange: (v: string) => setDraftExtraValue(key, v),
+      options: extraOptions[key] || [],
+    })),
+    [draftExtraKeys, draftExtraValues, extraOptions],
+  );
+
+  const onAddExtraField = (key: string) => {
+    setDraftExtraKeys((prev) => (prev.includes(key) ? prev : [...prev, key]));
+    setDraftExtraValues((prev) => (key in prev ? prev : { ...prev, [key]: '' }));
+  };
+
+  const onRemoveExtraField = (key: string) => {
+    setDraftExtraKeys((prev) => prev.filter((k) => k !== key));
+    setDraftExtraValues((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const applyFilters = () => {
+    const updates: Record<string, string | number | boolean | null> = {
+      mainGroup: draftMainGroup,
+      subGroup: draftSubGroup,
+      brand: draftBrand,
+      offset: 0,
+      xfields: draftExtraKeys.length > 0 ? draftExtraKeys.join('|') : null,
+    };
+    // Clear the URL value for any key that was committed before but isn't
+    // in the draft list anymore — writeParams only touches keys it's given.
+    for (const key of activeExtraKeys) {
+      if (!draftExtraKeys.includes(key)) updates[`${EXTRA_PARAM_PREFIX}${key}`] = null;
+    }
+    for (const key of draftExtraKeys) {
+      updates[`${EXTRA_PARAM_PREFIX}${key}`] = draftExtraValues[key] || null;
+    }
+    writeParams(updates);
+  };
+
+  const total = Number(result?.total) || 0;
+  const hitCount = result?.hits.length ?? 0;
+  const fromRow = hitCount === 0 ? 0 : offset + 1;
+  const toRow = offset + hitCount;
+  const hasPrev = offset > 0;
+  const hasNext = hitCount === PAGE_SIZE;
 
   // The search bar lives in one fixed spot in the tree regardless of
   // isResults — only the content below it swaps. Landing and results used
@@ -236,7 +353,7 @@ export function CatalogPage() {
   // focus, visible flash, felt "broken"). Same DOM shape throughout means
   // React just re-renders the parts that changed.
   return (
-    <div className="catalog-page">
+    <div className={`catalog-page${itemCode || creatingNew ? ' has-drawer' : ''}`}>
       <header className="catalog-header">
         <h1 className="catalog-title">Find an item</h1>
         <form className="catalog-search-form" onSubmit={onSubmit}>
@@ -267,23 +384,29 @@ export function CatalogPage() {
             </button>
           )}
         </form>
+        {isSteward && (
+          <button type="button" className="btn btn-secondary" onClick={openNewItem}>
+            + New item
+          </button>
+        )}
       </header>
 
-      <LiveSourcePane kind="items" />
+      <LiveSourcePane />
 
       {!isResults && (
         <p className="catalog-hint">Search by item code, name, or catalogue number — or browse the full catalog and filter by group and brand.</p>
       )}
 
       {isResults && (
-        <div className="results-layout">
-          <aside className="filter-rail">
-            <h2>Filters</h2>
-            {filterBlocks}
-            <button type="button" className="btn btn-secondary btn-block" onClick={() => writeParams({ mainGroup: draftMainGroup, subGroup: draftSubGroup, brand: draftBrand, offset: 0 })}>
-              Apply
-            </button>
-          </aside>
+        <div className="results-stack">
+          <FilterBar
+            fixedFields={fixedFilterFields}
+            extraFields={extraFilterFields}
+            onRemoveExtraField={onRemoveExtraField}
+            availableFields={availableFields}
+            onAddExtraField={onAddExtraField}
+            onApply={applyFilters}
+          />
 
           <section className="results-main">
             {error && <p className="form-error" role="alert">{error}</p>}
@@ -294,69 +417,82 @@ export function CatalogPage() {
                 <p className="empty-copy">Try loosening the filters or search terms.</p>
               </div>
             )}
-            {!loading && result && result.hits.length > 0 && (
+            {result && result.hits.length > 0 && (
               <>
-                <table className="results-table">
-                  <thead>
-                    <tr>
-                      <th>Code</th>
-                      <th>Item Name</th>
-                      <th>Brand</th>
-                      <th>Group / Sub</th>
-                      <th>UOM</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.hits.map((hit) => {
-                      const key = itemPrimaryKey(hit);
-                      return (
-                      <tr
-                        key={hit.id}
-                        className="clickable"
-                        tabIndex={0}
-                        onClick={() => openItem(hit.itemCode)}
-                        onKeyDown={(e) => onRowKey(e, hit.itemCode)}
-                      >
-                        <td className="nowrap td-key">
-                          <span className="key-kicker">{key.label}</span>
-                          <span className="key-value">{highlight(key.value, q)}</span>
-                        </td>
-                        <td>
-                          <div className="particulars">
-                            <span className="party">{highlight(hit.itemName, q)}</span>
-                            <span className="narration">
-                              {hit.catalogueNo && key.kind !== 'catalogueNo' ? <>Cat no: {highlight(hit.catalogueNo, q)}</> : '—'}
-                            </span>
-                          </div>
-                        </td>
-                        <td>{hit.brand ? highlight(hit.brand, q) : '—'}</td>
-                        <td>
-                          {hit.mainGroup ? hit.mainGroup : '—'}
-                          {hit.subGroup && ` / ${hit.subGroup}`}
-                        </td>
-                        <td>{hit.uom || '—'}</td>
+                <div className="table-scroll">
+                  <table className={`results-table${loading ? ' is-loading' : ''}`}>
+                    <thead>
+                      <tr>
+                        <th className="td-select"><span className="visually-hidden">Select</span></th>
+                        <th>Code</th>
+                        <th>Item Name</th>
+                        <th>Brand</th>
+                        <th>Group / Sub</th>
+                        <th>UOM</th>
                       </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {result.hits.map((hit) => {
+                        const key = itemPrimaryKey(hit);
+                        return (
+                        <tr
+                          key={hit.id}
+                          className="clickable"
+                          tabIndex={0}
+                          onClick={() => openItem(hit.itemCode)}
+                          onKeyDown={(e) => onRowKey(e, hit.itemCode)}
+                        >
+                          <td className="td-select" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={selected.has(hit.itemCode)}
+                              onChange={() => toggleSelect(hit.itemCode, hit.itemName)}
+                              aria-label={`Select ${hit.itemName}`}
+                            />
+                          </td>
+                          <td className="nowrap td-key">
+                            <span className="key-kicker">{key.label}</span>
+                            <span className="key-value">{highlight(key.value, q)}</span>
+                          </td>
+                          <td>
+                            <div className="particulars">
+                              <span className="party">{highlight(hit.itemName, q)}</span>
+                              <span className="narration">
+                                {hit.catalogueNo && key.kind !== 'catalogueNo' ? <>Cat no: {highlight(hit.catalogueNo, q)}</> : '—'}
+                              </span>
+                            </div>
+                          </td>
+                          <td>{hit.brand ? highlight(hit.brand, q) : '—'}</td>
+                          <td>
+                            {hit.mainGroup ? hit.mainGroup : '—'}
+                            {hit.subGroup && ` / ${hit.subGroup}`}
+                          </td>
+                          <td>{hit.uom || '—'}</td>
+                        </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
                 <div className="pager">
                   <span className="muted">
-                    {fromRow}–{toRow} of {total}
+                    {total > 0
+                      ? `${fromRow}–${toRow} of ${total.toLocaleString('en-IN')}`
+                      : `${fromRow}–${toRow}`}
                   </span>
                   <div className="pager-btns">
                     <button
                       type="button"
-                      className="btn btn-ghost"
-                      disabled={offset <= 0}
+                      className="btn btn-secondary"
+                      disabled={!hasPrev || loading}
                       onClick={() => writeParams({ offset: Math.max(0, offset - PAGE_SIZE) })}
                     >
                       Previous
                     </button>
                     <button
                       type="button"
-                      className="btn btn-ghost"
-                      disabled={offset + PAGE_SIZE >= total}
+                      className="btn btn-secondary"
+                      disabled={!hasNext || loading}
                       onClick={() => writeParams({ offset: offset + PAGE_SIZE })}
                     >
                       Next
@@ -369,12 +505,23 @@ export function CatalogPage() {
         </div>
       )}
 
-      {itemCode && (
+      {(itemCode || creatingNew) && (
         <ItemDrawer
-          itemCode={itemCode}
-          onClose={closeItem}
+          itemCode={creatingNew ? null : itemCode}
+          onClose={creatingNew ? () => writeParams({ new: null }) : closeItem}
+          onCreated={(code) => openItem(code)}
         />
       )}
+
+      <SelectionTray
+        items={[...selected].map(([code, name]) => ({ code, name }))}
+        onRemove={(code) => setSelected((prev) => {
+          const next = new Map(prev);
+          next.delete(code);
+          return next;
+        })}
+        onClear={() => setSelected(new Map())}
+      />
     </div>
   );
 }

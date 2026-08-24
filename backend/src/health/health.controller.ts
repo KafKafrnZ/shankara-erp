@@ -13,7 +13,7 @@ export class HealthController {
     try {
       await this.dataSource.query('SELECT 1');
       const asOfRes = await this.dataSource.query(
-        `SELECT MAX(published_at) as "asOf" FROM ingest_batch WHERE status = 'published'`,
+        `SELECT MAX(published_at) as "asOf" FROM item_master_batch WHERE status = 'published'`,
       );
       const asOf = asOfRes[0]?.asOf ? new Date(asOfRes[0].asOf).toISOString() : null;
       return {

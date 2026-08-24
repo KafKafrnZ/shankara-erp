@@ -1,20 +1,26 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
-import { SourceFile } from '../../ingest/entities/source-file.entity';
+import { SourceFile } from '../../storage/entities/source-file.entity';
 
 @Entity({ name: 'item_master_batch' })
 export class ItemMasterBatch {
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;
 
-  @ManyToOne(() => SourceFile)
+  @ManyToOne(() => SourceFile, { nullable: true })
   @JoinColumn({ name: 'source_file_id' })
-  sourceFile: SourceFile;
+  sourceFile: SourceFile | null;
 
-  @Column({ name: 'source_file_id', type: 'bigint' })
-  sourceFileId: string;
+  /** Null for a manual add/edit/delete — there's no uploaded file behind it. */
+  @Column({ name: 'source_file_id', type: 'bigint', nullable: true })
+  sourceFileId: string | null;
 
   @Column({ name: 'file_sha256', type: 'char', length: 64, unique: true })
   fileSha256: string;
+
+  /** True for a batch created by manualUpsert/manualDelete rather than a
+   *  real spreadsheet upload. */
+  @Column({ name: 'is_manual', type: 'boolean', default: false })
+  isManual: boolean;
 
   @Column({ name: 'uploaded_by', type: 'bigint' })
   uploadedBy: string;

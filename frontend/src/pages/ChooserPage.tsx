@@ -15,8 +15,8 @@ import { DotField } from '../components/DotField.tsx';
 export function ChooserPage() {
   const navigate = useNavigate();
 
-  const enterVouchers = () => navigate('/login?next=%2F');
-  const enterCatalog = () => navigate('/login?next=%2Fcatalog');
+  const enterSearch = () => navigate('/login?next=%2Fcatalog');
+  const enterUpload = () => navigate('/login?next=%2Fcatalog%2Fupload');
 
   const onPanelKeyDown = (e: KeyboardEvent, action: () => void) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -31,16 +31,16 @@ export function ChooserPage() {
         className="chooser-panel chooser-panel-red"
         role="button"
         tabIndex={0}
-        aria-label="Find a bill in the day book"
-        onClick={enterVouchers}
-        onKeyDown={(e) => onPanelKeyDown(e, enterVouchers)}
+        aria-label="Find an item in the catalog"
+        onClick={enterSearch}
+        onKeyDown={(e) => onPanelKeyDown(e, enterSearch)}
       >
         <DotField variant="dark" dotColor="0, 0, 0" fill="container" />
         <div className="chooser-panel-content">
           <LogoChip height={32} />
-          <h2>Day book</h2>
-          <p>Find a bill or voucher from Tally.</p>
-          <span className="chooser-cta chooser-cta-dark dot-suppress">Find a bill →</span>
+          <h2>Find an item</h2>
+          <p>Search the catalog by item code, name, or catalogue number.</p>
+          <span className="chooser-cta chooser-cta-dark dot-suppress">Find an item →</span>
         </div>
       </div>
 
@@ -50,16 +50,16 @@ export function ChooserPage() {
         className="chooser-panel chooser-panel-black"
         role="button"
         tabIndex={0}
-        aria-label="Find an item in the catalog"
-        onClick={enterCatalog}
-        onKeyDown={(e) => onPanelKeyDown(e, enterCatalog)}
+        aria-label="Upload items to the catalog"
+        onClick={enterUpload}
+        onKeyDown={(e) => onPanelKeyDown(e, enterUpload)}
       >
         <DotField variant="dark" fill="container" />
         <div className="chooser-panel-content">
           <BrandLogo height={32} />
-          <h2>Item catalog</h2>
-          <p>Find an item by code, name, or catalogue number.</p>
-          <span className="chooser-cta chooser-cta-red dot-suppress">Find an item →</span>
+          <h2>Upload items</h2>
+          <p>Bring a new item list in from Tally and make it live.</p>
+          <span className="chooser-cta chooser-cta-red dot-suppress">Upload items →</span>
         </div>
       </div>
     </div>

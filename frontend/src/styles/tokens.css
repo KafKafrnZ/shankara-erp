@@ -4,8 +4,11 @@
   --sb-red-deep: #c10510;
   --sb-red-soft: #f26b73;
   --sb-white: #ffffff;
-  --sb-off-white: #f7f7f7;
-  --sb-mist: #ececec;
+  /* A hint of the brand red instead of a neutral grey-white — the page
+     background reads as "this brand's white", not a leftover default. Kept
+     subtle enough that it never competes with real content contrast. */
+  --sb-off-white: #f9f5f5;
+  --sb-mist: #eee9e9;
   --sb-ink: #141414;
   --sb-muted: #5c5c5c;
   --sb-line: #d1d5db;

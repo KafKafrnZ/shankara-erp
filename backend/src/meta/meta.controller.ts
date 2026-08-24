@@ -18,14 +18,4 @@ export class MetaController {
   async getLiveSources(@Req() req: AuthedRequest) {
     return this.metaService.getLiveSources(req.user);
   }
-
-  @Get('vch-types')
-  async getVchTypes(@Req() req: AuthedRequest) {
-    return this.metaService.listVchTypes(req.user);
-  }
-
-  @Get('companies')
-  async getCompanies(@Req() req: AuthedRequest) {
-    return this.metaService.listCompanies(req.user);
-  }
 }

@@ -139,6 +139,37 @@ describe('ItemMasterController (e2e)', () => {
       .expect(201); // Post returns 201 by default unless configured
     expect(searchRes.body.hits.length).toBeGreaterThan(0);
 
+    // test-fixture-1.xlsx has a "SI No." column the master_code_v1 layout
+    // doesn't map to a fixed field — it should land in `extra` and be
+    // filterable, dynamically, without either side having to know about it
+    // ahead of time.
+    const fieldsRes = await request(app.getHttpServer())
+      .get('/api/item-search/fields')
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .expect(200);
+    expect(fieldsRes.body.some((f: { key: string }) => f.key === 'SI No.')).toBe(true);
+
+    const extraFacetRes = await request(app.getHttpServer())
+      .get('/api/item-search/facets/extra')
+      .query({ field: 'SI No.' })
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .expect(200);
+    expect(extraFacetRes.body.some((f: { value: string }) => f.value === '1')).toBe(true);
+
+    const extraFilteredRes = await request(app.getHttpServer())
+      .post('/api/item-search')
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .send({ q: 'TEST_ITEM_NAME', extra: { 'SI No.': '1' } })
+      .expect(201);
+    expect(extraFilteredRes.body.hits.length).toBeGreaterThan(0);
+
+    const extraMismatchRes = await request(app.getHttpServer())
+      .post('/api/item-search')
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .send({ q: 'TEST_ITEM_NAME', extra: { 'SI No.': 'not-a-real-value' } })
+      .expect(201);
+    expect(extraMismatchRes.body.hits.length).toBe(0);
+
     const liveSources = await request(app.getHttpServer())
       .get('/api/meta/live-sources')
       .set('Authorization', `Bearer ${stewardToken}`)
@@ -258,4 +289,89 @@ describe('ItemMasterController (e2e)', () => {
       .set('Authorization', `Bearer ${stewardToken}`)
       .expect(400);
   }, 60000);
+
+  it('manual add, edit, and delete a catalog row — versioned like an upload', async () => {
+    const itemCode = `MANUAL-${Date.now()}`;
+
+    // Non-steward can't create
+    await request(app.getHttpServer())
+      .post('/api/item-master/rows')
+      .set('Authorization', `Bearer ${financeToken}`)
+      .send({ itemCode, itemName: 'Manual Test Item' })
+      .expect(403);
+
+    // Create
+    const createRes = await request(app.getHttpServer())
+      .post('/api/item-master/rows')
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .send({ itemCode, itemName: 'Manual Test Item', brand: 'ManualBrand', extra: { 'Test Field': 'A' } })
+      .expect(200);
+    expect(createRes.body.status).toBe('published');
+    expect(createRes.body.isManual).toBe(true);
+
+    const foundAfterCreate = await request(app.getHttpServer())
+      .post('/api/item-search')
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .send({ q: itemCode })
+      .expect(201);
+    expect(foundAfterCreate.body.hits.some((h: { itemCode: string }) => h.itemCode === itemCode)).toBe(true);
+
+    // Edit — same item code, changed name
+    const editRes = await request(app.getHttpServer())
+      .post('/api/item-master/rows')
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .send({ itemCode, itemName: 'Manual Test Item (edited)', brand: 'ManualBrand', extra: { 'Test Field': 'B' } })
+      .expect(200);
+    expect(editRes.body.status).toBe('published');
+
+    const historyAfterEdit = await request(app.getHttpServer())
+      .get(`/api/item-search/history/${itemCode}`)
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .expect(200);
+    expect(historyAfterEdit.body).toHaveLength(2);
+    expect(historyAfterEdit.body[0].itemName).toBe('Manual Test Item (edited)');
+    expect(historyAfterEdit.body[0].validTo).toBeNull();
+    expect(historyAfterEdit.body[1].itemName).toBe('Manual Test Item');
+    expect(historyAfterEdit.body[1].validTo).not.toBeNull();
+
+    // Audit trail has both a create and an update event for this item code
+    const auditRows = await db.query(
+      `SELECT action FROM audit_event WHERE action IN ('item_manual_create', 'item_manual_update') AND meta->>'itemCode' = $1 ORDER BY id ASC`,
+      [itemCode],
+    );
+    expect(auditRows.rows.map((r: { action: string }) => r.action)).toEqual(['item_manual_create', 'item_manual_update']);
+
+    // Non-steward can't delete
+    await request(app.getHttpServer())
+      .delete(`/api/item-master/rows/${itemCode}`)
+      .set('Authorization', `Bearer ${financeToken}`)
+      .expect(403);
+
+    // Delete
+    await request(app.getHttpServer())
+      .delete(`/api/item-master/rows/${itemCode}`)
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .expect(200);
+
+    const foundAfterDelete = await request(app.getHttpServer())
+      .post('/api/item-search')
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .send({ q: itemCode })
+      .expect(201);
+    expect(foundAfterDelete.body.hits.some((h: { itemCode: string }) => h.itemCode === itemCode)).toBe(false);
+
+    // The deletion itself still shows in the item's own history
+    const historyAfterDelete = await request(app.getHttpServer())
+      .get(`/api/item-search/history/${itemCode}`)
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .expect(200);
+    expect(historyAfterDelete.body).toHaveLength(3);
+    expect(historyAfterDelete.body[0].validTo).toBeNull();
+
+    // Deleting an item that isn't live is a 404, not a silent no-op
+    await request(app.getHttpServer())
+      .delete(`/api/item-master/rows/${itemCode}`)
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .expect(404);
+  });
 });

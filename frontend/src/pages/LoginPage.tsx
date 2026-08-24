@@ -57,7 +57,7 @@ export function LoginPage() {
       <DotField variant="dark" />
       <div className="login-card">
         <BrandLogo height={46} />
-        <p className="login-tagline">Find a bill. Find an item.</p>
+        <p className="login-tagline">Find an item. Fast.</p>
         <form onSubmit={(e) => void onSubmit(e)} className="login-form">
           <label className="field">
             <span>Email</span>

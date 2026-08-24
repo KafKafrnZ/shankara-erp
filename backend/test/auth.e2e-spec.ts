@@ -93,20 +93,6 @@ describe('Auth (e2e)', () => {
     expect(res.body.displayName).toBe('System Steward');
   });
 
-  it('GET /api/meta/vch-types and companies are authenticated lists', async () => {
-    const types = await request(app.getHttpServer())
-      .get('/api/meta/vch-types')
-      .set('Authorization', `Bearer ${stewardToken}`)
-      .expect(200);
-    expect(Array.isArray(types.body.items)).toBe(true);
-
-    const companies = await request(app.getHttpServer())
-      .get('/api/meta/companies')
-      .set('Authorization', `Bearer ${stewardToken}`)
-      .expect(200);
-    expect(Array.isArray(companies.body.items)).toBe(true);
-  });
-
   it('GET /api/meta/live-sources is authenticated and lists live/pending buckets', async () => {
     await request(app.getHttpServer()).get('/api/meta/live-sources').expect(401);
 
@@ -121,38 +107,38 @@ describe('Auth (e2e)', () => {
       .expect(200);
     expect(Array.isArray(res.body.items.live)).toBe(true);
     expect(Array.isArray(res.body.items.pending)).toBe(true);
-    expect(Array.isArray(res.body.vouchers.live)).toBe(true);
-    expect(Array.isArray(res.body.vouchers.pending)).toBe(true);
   });
 
   it('GET /api/health remains public 200', async () => {
     await request(app.getHttpServer()).get('/api/health').expect(200);
   });
 
-  it('POST /api/uploads without token is 401', async () => {
-    await request(app.getHttpServer()).post('/api/uploads').expect(401);
+  it('POST /api/item-uploads without token is 401', async () => {
+    await request(app.getHttpServer()).post('/api/item-uploads').expect(401);
   });
 
-  it('finance cannot hit a steward-only stub', async () => {
+  it('finance cannot hit a steward-only upload', async () => {
     await request(app.getHttpServer())
-      .post('/api/uploads')
+      .post('/api/item-uploads')
       .set('Authorization', `Bearer ${financeToken}`)
       .expect(403);
   });
 
-  it('steward CAN hit a steward-only stub', async () => {
+  it('steward CAN hit a steward-only upload', async () => {
     const fs = require('fs');
     const path = require('path');
-    const fixturePath = path.resolve(__dirname, '../../fixtures/daybook/tiny.csv');
+    const fixturePath = path.resolve(__dirname, '../fixtures/item-master/tiny.xlsx');
     if (!fs.existsSync(fixturePath)) {
+      // Content doesn't need to be a real workbook — the point of this test
+      // is the auth/role gate, not successful parsing (which happens async,
+      // after this response). The extension check is filename-only.
       fs.mkdirSync(path.dirname(fixturePath), { recursive: true });
-      fs.writeFileSync(fixturePath, 'mock,csv,data\n');
+      fs.writeFileSync(fixturePath, 'mock,xlsx,data\n');
     }
 
     const res = await request(app.getHttpServer())
-      .post('/api/uploads')
+      .post('/api/item-uploads')
       .set('Authorization', `Bearer ${stewardToken}`)
-      .field('companyId', 'SHANKARA_HYD')
       .attach('file', fixturePath);
 
     expect([200, 202]).toContain(res.status);

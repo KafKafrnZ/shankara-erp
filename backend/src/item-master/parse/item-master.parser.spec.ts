@@ -1,5 +1,8 @@
 import { parseItemMasterStream } from './item-master.parser';
 import * as path from 'path';
+import * as os from 'os';
+import * as fs from 'fs';
+import * as ExcelJS from 'exceljs';
 
 describe('ItemMasterParser', () => {
   it('should parse master code layout with formula resolution', async () => {
@@ -51,5 +54,38 @@ describe('ItemMasterParser', () => {
     
     const stringified = JSON.stringify(result.items);
     expect(stringified).not.toContain('[object Object]');
+  });
+
+  it('captures a column the layout does not recognize into extra', async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Sheet1');
+    // master_code_v1 layout header, plus one column with no fixed home.
+    sheet.addRow([
+      'Item Type', 'Catalogue No', 'Brand', 'Stock Item Name for Migration',
+      'Alias', 'Main Group', 'Sub Group', 'UOM', 'GST Rate',
+    ]);
+    sheet.addRow([
+      'Finished', 'CAT001', 'TEST_BRAND', 'Extra Column Item',
+      'ALIAS001', 'GROUP1', 'SUBGROUP1', 'PCS', '18%',
+    ]);
+
+    const tmpPath = path.join(os.tmpdir(), `extra-capture-${Date.now()}.xlsx`);
+    await workbook.xlsx.writeFile(tmpPath);
+    try {
+      const result = await parseItemMasterStream(tmpPath);
+      expect(result.acceptedRows).toBe(1);
+
+      const item = result.items[0];
+      expect(item.layoutKey).toBe('master_code_v1');
+      // 'Item Type' (column 0) has no fixed home in this layout either —
+      // both unmapped columns should be captured, not just one.
+      expect(item.extra).toEqual({ 'GST Rate': '18%', 'Item Type': 'Finished' });
+      // Fields the layout already maps into a fixed column must not also
+      // duplicate into extra.
+      expect(item.extra).not.toHaveProperty('Brand');
+      expect(item.extra).not.toHaveProperty('Catalogue No');
+    } finally {
+      fs.unlinkSync(tmpPath);
+    }
   });
 });

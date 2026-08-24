@@ -12,12 +12,28 @@ import { PgBoss } from 'pg-boss';
 import { ItemMasterBatch } from './entities/item-master-batch.entity';
 import { ItemMasterRow } from './entities/item-master-row.entity';
 import { ItemMasterSkip } from './entities/item-master-skip.entity';
-import { SourceFile } from '../ingest/entities/source-file.entity';
+import { SourceFile } from '../storage/entities/source-file.entity';
 import type { ObjectStore } from '../storage/object-store';
 import { OBJECT_STORE } from '../storage/object-store';
 import { AuditService } from '../audit/audit.service';
 import { parseItemMasterStream } from './parse/item-master.parser';
 import { ItemSearchService } from './item-search.service';
+import { ManualItemDto } from './dto/manual-item.dto';
+
+interface FingerprintableItem {
+  layoutKey: string;
+  itemCode: string;
+  catalogueNo?: string;
+  sapItemCode?: string;
+  brand?: string;
+  itemName: string;
+  hsnDescription?: string;
+  mainGroup?: string;
+  subGroup?: string;
+  uom?: string;
+  alias?: string;
+  extra?: Record<string, unknown>;
+}
 
 const pipeline = promisify(stream.pipeline);
 
@@ -206,6 +222,12 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
         await queryRunner.rollbackTransaction();
         return;
       }
+      // This job only ever runs for a real upload (enqueued from
+      // processUpload) — a manual add/edit/delete skips the parse queue
+      // entirely and is never the source of this batchId.
+      if (!batch.sourceFile) {
+        throw new Error(`item_master_batch ${batchId} has no source file to parse`);
+      }
 
       const objectStream = await this.objectStore.get(batch.sourceFile.storageKey);
       const tmpPath = path.join('/tmp', `item_parse_${batchId}_${Date.now()}.xlsx`);
@@ -299,21 +321,7 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
       const toInsert: ItemMasterRow[] = [];
 
       for (const item of dedupedItems) {
-        const fingerprintData = {
-          layoutKey: item.layoutKey,
-          itemCode: item.itemCode,
-          catalogueNo: item.catalogueNo,
-          sapItemCode: item.sapItemCode,
-          brand: item.brand,
-          itemName: item.itemName,
-          hsnDescription: item.hsnDescription,
-          mainGroup: item.mainGroup,
-          subGroup: item.subGroup,
-          uom: item.uom,
-          alias: item.alias,
-          extra: item.extra,
-        };
-        const fingerprint = crypto.createHash('sha256').update(JSON.stringify(fingerprintData)).digest('hex');
+        const fingerprint = this.computeFingerprint(item);
 
         const currentRow = currentByCode.get(item.itemCode);
 
@@ -384,6 +392,24 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
     } finally {
       await queryRunner.release();
     }
+  }
+
+  private computeFingerprint(item: FingerprintableItem): string {
+    const fingerprintData = {
+      layoutKey: item.layoutKey,
+      itemCode: item.itemCode,
+      catalogueNo: item.catalogueNo,
+      sapItemCode: item.sapItemCode,
+      brand: item.brand,
+      itemName: item.itemName,
+      hsnDescription: item.hsnDescription,
+      mainGroup: item.mainGroup,
+      subGroup: item.subGroup,
+      uom: item.uom,
+      alias: item.alias,
+      extra: item.extra,
+    };
+    return crypto.createHash('sha256').update(JSON.stringify(fingerprintData)).digest('hex');
   }
 
   async getBatch(id: number) {
@@ -532,5 +558,156 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
     await this.boss.send('item-master-parse', { batchId: Number(batchId) });
 
     return this.getBatch(batchId);
+  }
+
+  /** Add a new catalog item, or edit an existing one — keyed by item code.
+   *  Goes through the same batch → publish → audit → version-history
+   *  pipeline as a file upload (a single manually-typed row has nothing to
+   *  hold for review, so it publishes immediately instead of waiting for a
+   *  separate "make live" step). */
+  async manualUpsert(input: ManualItemDto, userId: string, ip?: string, userAgent?: string) {
+    const itemCode = input.itemCode.trim();
+    const itemName = input.itemName.trim();
+    if (!itemCode || !itemName) {
+      throw new BadRequestException('Item code and item name are required');
+    }
+
+    const item: FingerprintableItem = {
+      layoutKey: 'manual_v1',
+      itemCode,
+      itemName,
+      catalogueNo: input.catalogueNo?.trim() || undefined,
+      sapItemCode: input.sapItemCode?.trim() || undefined,
+      brand: input.brand?.trim() || undefined,
+      hsnDescription: input.hsnDescription?.trim() || undefined,
+      mainGroup: input.mainGroup?.trim() || undefined,
+      subGroup: input.subGroup?.trim() || undefined,
+      uom: input.uom?.trim() || undefined,
+      alias: input.alias?.trim() || undefined,
+      extra: input.extra || {},
+    };
+    const fingerprint = this.computeFingerprint(item);
+
+    const existing = await this.rowRepo.createQueryBuilder('row')
+      .innerJoin('row.batch', 'batch')
+      .where('row.item_code = :itemCode', { itemCode })
+      .andWhere('row.valid_to IS NULL')
+      .andWhere('row.is_deleted = false')
+      .andWhere("batch.status = 'published'")
+      .getOne();
+
+    const batchId = await this.dataSource.transaction(async (manager) => {
+      const batch = manager.create(ItemMasterBatch, {
+        sourceFileId: null,
+        isManual: true,
+        fileSha256: crypto.randomBytes(32).toString('hex'),
+        uploadedBy: userId,
+        status: 'held',
+        totalSheets: 1,
+        recognizedSheets: 1,
+        skippedSheets: 0,
+        totalRows: 1,
+        acceptedRows: 1,
+        skippedRows: 0,
+      });
+      await manager.save(batch);
+
+      const row = manager.create(ItemMasterRow, {
+        batchId: batch.id,
+        ...item,
+        isDeleted: false,
+        fingerprint,
+      });
+      await manager.save(row);
+
+      await this.auditService.log({
+        userId,
+        action: existing ? 'item_manual_update' : 'item_manual_create',
+        entityType: 'item_master_batch',
+        entityId: batch.id,
+        ip, userAgent,
+        meta: { itemCode },
+      }, manager);
+
+      return batch.id;
+    });
+
+    return this.publishBatch(Number(batchId), userId, ip, userAgent);
+  }
+
+  /** Soft-deletes a catalog item: inserts one more version marked deleted,
+   *  publishes it (closing the previous live version the same way any new
+   *  version does), so search stops returning it while the item's version
+   *  history — including this removal — stays intact. */
+  async manualDelete(itemCode: string, userId: string, ip?: string, userAgent?: string) {
+    const code = itemCode?.trim();
+    if (!code) {
+      throw new BadRequestException('Item code is required');
+    }
+
+    const current = await this.rowRepo.createQueryBuilder('row')
+      .innerJoin('row.batch', 'batch')
+      .where('row.item_code = :code', { code })
+      .andWhere('row.valid_to IS NULL')
+      .andWhere('row.is_deleted = false')
+      .andWhere("batch.status = 'published'")
+      .getOne();
+    if (!current) {
+      throw new NotFoundException('Item not found in the live catalog');
+    }
+
+    const item: FingerprintableItem = {
+      layoutKey: current.layoutKey,
+      itemCode: current.itemCode,
+      itemName: current.itemName,
+      catalogueNo: current.catalogueNo || undefined,
+      sapItemCode: current.sapItemCode || undefined,
+      brand: current.brand || undefined,
+      hsnDescription: current.hsnDescription || undefined,
+      mainGroup: current.mainGroup || undefined,
+      subGroup: current.subGroup || undefined,
+      uom: current.uom || undefined,
+      alias: current.alias || undefined,
+      extra: current.extra || {},
+    };
+    const fingerprint = this.computeFingerprint(item);
+
+    const batchId = await this.dataSource.transaction(async (manager) => {
+      const batch = manager.create(ItemMasterBatch, {
+        sourceFileId: null,
+        isManual: true,
+        fileSha256: crypto.randomBytes(32).toString('hex'),
+        uploadedBy: userId,
+        status: 'held',
+        totalSheets: 1,
+        recognizedSheets: 1,
+        skippedSheets: 0,
+        totalRows: 1,
+        acceptedRows: 1,
+        skippedRows: 0,
+      });
+      await manager.save(batch);
+
+      const row = manager.create(ItemMasterRow, {
+        batchId: batch.id,
+        ...item,
+        isDeleted: true,
+        fingerprint,
+      });
+      await manager.save(row);
+
+      await this.auditService.log({
+        userId,
+        action: 'item_manual_delete',
+        entityType: 'item_master_batch',
+        entityId: batch.id,
+        ip, userAgent,
+        meta: { itemCode: code },
+      }, manager);
+
+      return batch.id;
+    });
+
+    return this.publishBatch(Number(batchId), userId, ip, userAgent);
   }
 }

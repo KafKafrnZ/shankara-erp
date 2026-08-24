@@ -3,8 +3,6 @@ import { useAuth } from './auth/useAuth.ts';
 import { AppShell } from './components/AppShell.tsx';
 import { ChooserPage } from './pages/ChooserPage.tsx';
 import { LoginPage } from './pages/LoginPage.tsx';
-import { SearchPage } from './pages/SearchPage.tsx';
-import { UploadPage } from './pages/UploadPage.tsx';
 import { CatalogPage } from './pages/CatalogPage.tsx';
 import { CatalogUploadPage } from './pages/CatalogUploadPage.tsx';
 import { UsersPage } from './pages/UsersPage.tsx';
@@ -30,8 +28,8 @@ function RequireAuth() {
 }
 
 // The root path is the one place an unauthenticated visitor doesn't go
-// straight to /login: they see the split chooser first (pick Vouchers or
-// Catalog), which itself sends them to /login?next=... Any other protected
+// straight to /login: they see the split chooser first (pick Find item or
+// Upload items), which itself sends them to /login?next=... Any other protected
 // route hit directly while unauthenticated (a deep link, a bookmark) still
 // goes straight to /login via RequireAuth above — the chooser is the cold
 // start experience, not a detour on every route.
@@ -57,14 +55,13 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route element={<RootGate />}>
         <Route element={<AppShell />}>
-          <Route path="/" element={<SearchPage />} />
+          <Route path="/" element={<Navigate to="/catalog" replace />} />
         </Route>
       </Route>
       <Route element={<RequireAuth />}>
         <Route element={<AppShell />}>
           <Route path="/catalog" element={<CatalogPage />} />
           <Route path="/catalog/upload" element={<CatalogUploadPage />} />
-          <Route path="/upload" element={<UploadPage />} />
           <Route path="/admin/users" element={<UsersPage />} />
         </Route>
       </Route>

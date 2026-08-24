@@ -1,7 +1,26 @@
 import * as ExcelJS from 'exceljs';
 import * as fs from 'fs';
-import { ITEM_LAYOUT_REGISTRY, buildColumnMap } from '../detect/item-layout.registry';
+import { ITEM_LAYOUT_REGISTRY, buildColumnMap, isPlaceholderValue } from '../detect/item-layout.registry';
 import { ParsedItemRow } from '../detect/item-layout-detector.interface';
+
+// Every column the active layout doesn't already map to a fixed field
+// (item code, brand, main group, ...) goes here instead of being dropped —
+// a real "MAIN MASTER" export can carry ~48 columns and only ~10 have a
+// fixed home. Keyed by the column's own header text (not lowercased) so it
+// reads naturally wherever it's shown.
+function extractExtra(row: any[], headerRow: any[], columnMap: Record<string, number>, knownHeaderKeys: string[]): Record<string, string> {
+  const known = new Set(knownHeaderKeys);
+  const extra: Record<string, string> = {};
+  for (const [normalizedHeader, colIndex] of Object.entries(columnMap)) {
+    if (known.has(normalizedHeader)) continue;
+    const value = row[colIndex];
+    if (isPlaceholderValue(value)) continue;
+    const label = String(headerRow[colIndex] ?? normalizedHeader).trim();
+    if (!label) continue;
+    extra[label] = String(value).trim();
+  }
+  return extra;
+}
 
 export interface ParseResult {
   totalSheets: number;
@@ -108,6 +127,7 @@ export async function parseItemMasterStream(filePath: string): Promise<ParseResu
         result.acceptedRows++;
         result.items.push({
           ...(parsed as ParsedItemRow),
+          extra: extractExtra(rowValues, headerRow, columnMap, detector!.knownHeaderKeys),
           layoutKey: detector!.key,
           sourceRowNo: row.number,
           sheetName,

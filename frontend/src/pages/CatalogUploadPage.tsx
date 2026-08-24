@@ -153,7 +153,7 @@ export function CatalogUploadPage() {
       return;
     }
     // Catch the wrong file type here rather than letting it upload and fail
-    // inside the parser — same check the voucher upload already does.
+    // deep inside the parser.
     const name = f.name.toLowerCase();
     if (!name.endsWith('.xlsx')) {
       setFile(null);
@@ -257,7 +257,7 @@ export function CatalogUploadPage() {
     <div className="upload-page">
       <h1 className="page-title">Upload items</h1>
       <p className="muted page-lead">Item list from Tally. Excel .xlsx only.</p>
-      <LiveSourcePane kind="items" refreshKey={`${batch?.id ?? ''}:${batch?.status ?? ''}`} />
+      <LiveSourcePane refreshKey={`${batch?.id ?? ''}:${batch?.status ?? ''}`} />
 
       <form className="upload-form" onSubmit={(e) => void onUpload(e)}>
         <div
@@ -385,36 +385,38 @@ export function CatalogUploadPage() {
       {batch && batch.status !== 'processing' && skipTotal > 0 && (
         <section className="rejects">
           <h2>Rows or sheets that were skipped ({skipTotal})</h2>
-          <table className="results-table">
-            <thead>
-              <tr>
-                <th>Sheet</th>
-                <th>Row</th>
-                <th>What happened</th>
-                <th>Source</th>
-              </tr>
-            </thead>
-            <tbody>
-              {skips.map((row, i) => (
-                <tr key={`${row.sourceRowNo}-${i}`}>
-                  <td>{row.sheetName}</td>
-                  <td>{row.sourceRowNo || '-'}</td>
-                  <td>{describeItemSkip(row.code)}</td>
-                  <td>
-                    {row.raw != null && (
-                      <details
-                        open={expandedRaw === i}
-                        onToggle={(e) => setExpandedRaw((e.target as HTMLDetailsElement).open ? i : null)}
-                      >
-                        <summary>Original row</summary>
-                        <pre className="raw-json">{JSON.stringify(row.raw, null, 2)}</pre>
-                      </details>
-                    )}
-                  </td>
+          <div className="table-scroll">
+            <table className="results-table">
+              <thead>
+                <tr>
+                  <th>Sheet</th>
+                  <th>Row</th>
+                  <th>What happened</th>
+                  <th>Source</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {skips.map((row, i) => (
+                  <tr key={`${row.sourceRowNo}-${i}`}>
+                    <td>{row.sheetName}</td>
+                    <td>{row.sourceRowNo || '-'}</td>
+                    <td>{describeItemSkip(row.code)}</td>
+                    <td>
+                      {row.raw != null && (
+                        <details
+                          open={expandedRaw === i}
+                          onToggle={(e) => setExpandedRaw((e.target as HTMLDetailsElement).open ? i : null)}
+                        >
+                          <summary>Original row</summary>
+                          <pre className="raw-json">{JSON.stringify(row.raw, null, 2)}</pre>
+                        </details>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <div className="pager">
             <span className="muted">
               {skipTotal === 0 ? '0' : `${skipOffset + 1}–${Math.min(skipOffset + SKIP_PAGE, skipTotal)}`} of {skipTotal}

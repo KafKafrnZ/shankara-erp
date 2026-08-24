@@ -2,7 +2,7 @@ import { ItemLayoutDetector, ParsedItemRow } from './item-layout-detector.interf
 
 function normalizeHeader(header: any): string {
   if (typeof header !== 'string') return '';
-  // match daybook.detector.ts cleanHeader: trim, collapse whitespace, lowercase, strip trailing dot
+  // trim, collapse whitespace, lowercase, strip trailing dot
   return header.replace(/\s+/g, ' ').trim().toLowerCase().replace(/\.$/, '');
 }
 
@@ -16,7 +16,7 @@ function matchHeaders(actual: any[], expected: string[]): boolean {
 // the TILES sample file had item code, item name, main group, sub group,
 // and UOM all literally "-", and was silently accepted as a real catalog
 // item before this check existed. Treat that the same as genuinely empty.
-function isPlaceholderValue(v: any): boolean {
+export function isPlaceholderValue(v: any): boolean {
   if (v === null || v === undefined) return true;
   const s = String(v).trim();
   if (s === '') return true;
@@ -26,6 +26,13 @@ function isPlaceholderValue(v: any): boolean {
 // 1. SAP Item Master Detector
 export const sapItemMasterDetector: ItemLayoutDetector = {
   key: 'sap_item_master_v1',
+  // Every header this layout maps into a fixed column — anything else in
+  // the file lands in `extra` instead of being silently dropped.
+  knownHeaderKeys: [
+    'sap item code', 'catalogue no', 'brand', 'main group', 'sub group', 'uom',
+    'hsn description', 'alias',
+    'sap item description', 'stock item name for searching', 'stock item name for migration',
+  ],
   detect(headerRow: any[]): boolean {
     const required = ['sap item code', 'catalogue no', 'brand', 'main group', 'uom'];
     return matchHeaders(headerRow, required);
@@ -70,6 +77,10 @@ export const sapItemMasterDetector: ItemLayoutDetector = {
 // 2. Master Code Detector
 export const masterCodeDetector: ItemLayoutDetector = {
   key: 'master_code_v1',
+  knownHeaderKeys: [
+    'catalogue no', 'brand', 'stock item name for migration', 'alias',
+    'main group', 'sub group', 'uom', 'hsn description',
+  ],
   detect(headerRow: any[]): boolean {
     const required = ['catalogue no', 'brand', 'stock item name for migration', 'alias', 'main group', 'sub group', 'uom'];
     return matchHeaders(headerRow, required) && !normalizeHeader(headerRow[0]).match(/^$/); // Make sure it's not the blank first header layout
@@ -110,6 +121,10 @@ export const masterCodeDetector: ItemLayoutDetector = {
 // 3. CP Sani Others Detector
 export const cpSaniOthersDetector: ItemLayoutDetector = {
   key: 'cp_sani_others_v1',
+  // 'category' is required for detection but was never captured into a
+  // fixed field — leave it out of this list so it flows into `extra`
+  // instead of being dropped.
+  knownHeaderKeys: ['stock item name', 'alias', 'main group', 'sub group', 'uom', 'brand', 'hsn description'],
   detect(headerRow: any[]): boolean {
     const required = ['stock item name', 'alias', 'main group', 'sub group', 'uom', 'category'];
     // First header cell is blank

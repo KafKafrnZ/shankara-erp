@@ -29,7 +29,11 @@ export const DotField: React.FC<DotFieldProps> = ({ variant, dotColor = '227, 6,
     const MAX_SCALE = 2.5;
     const MAX_OPACITY = 0.55;
 
-    const BASE_OPACITY = variant === 'dark' ? 0.14 : 0.08;
+    // Light variant was tuned so faint it read as plain white at rest —
+    // bumped so the red dot texture is actually visible as ambient
+    // character, not just on hover, while staying well clear of anything
+    // that would compete with text contrast.
+    const BASE_OPACITY = variant === 'dark' ? 0.14 : 0.12;
 
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 

@@ -1,13 +1,5 @@
-import type {
-  Batch,
-  LiveSources,
-  RejectsResponse,
-  SearchBody,
-  SearchResponse,
-  UploadResult,
-  User,
-  VoucherDetail,
-} from './types.ts';
+import type { LiveSources, User } from './types.ts';
+import { pushDevLog } from './devlog.ts';
 
 export const TOKEN_KEY = 'sb.accessToken';
 
@@ -50,12 +42,17 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers.set('Content-Type', 'application/json');
   }
 
+  const method = (init.method || 'GET').toUpperCase();
+  const startedAt = performance.now();
+
   let res: Response;
   try {
     res = await fetch(path, { ...init, headers });
   } catch {
+    pushDevLog({ method, path, status: null, ok: false, ms: Math.round(performance.now() - startedAt), at: Date.now() });
     throw new ApiError(0, `Can't reach the server right now. Check your connection and try again, or ${CONTACT_HINT} if this keeps happening.`);
   }
+  pushDevLog({ method, path, status: res.status, ok: res.ok, ms: Math.round(performance.now() - startedAt), at: Date.now() });
 
   let payload: unknown = null;
   const text = await res.text();
@@ -129,47 +126,4 @@ export function fetchAsOf() {
 
 export function fetchLiveSources() {
   return api<LiveSources>('/api/meta/live-sources');
-}
-
-export function fetchVchTypes() {
-  return api<{ items: string[] }>('/api/meta/vch-types');
-}
-
-export function fetchCompanies() {
-  return api<{ items: string[] }>('/api/meta/companies');
-}
-
-export function searchVouchers(body: SearchBody) {
-  return api<SearchResponse>('/api/search', {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
-}
-
-export function fetchVoucher(id: number) {
-  return api<VoucherDetail>(`/api/vouchers/${id}`);
-}
-
-export function uploadFile(file: File, companyId: string, branchId?: string) {
-  const fd = new FormData();
-  fd.append('file', file);
-  fd.append('companyId', companyId);
-  if (branchId) fd.append('branchId', branchId);
-  return api<UploadResult>('/api/uploads', { method: 'POST', body: fd });
-}
-
-export function fetchBatch(id: number) {
-  return api<Batch>(`/api/batches/${id}`);
-}
-
-export function fetchBatchRejects(id: number, page = 1, pageSize = 50) {
-  return api<RejectsResponse>(`/api/batches/${id}/rejects?page=${page}&pageSize=${pageSize}`);
-}
-
-export function publishBatch(id: number) {
-  return api<Batch>(`/api/batches/${id}/publish`, { method: 'POST' });
-}
-
-export function holdBatch(id: number) {
-  return api<Batch>(`/api/batches/${id}/hold`, { method: 'POST' });
 }

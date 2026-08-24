@@ -1,7 +1,24 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Brackets } from 'typeorm';
+import * as ExcelJS from 'exceljs';
 import { ItemMasterRow } from './entities/item-master-row.entity';
+
+// Column order for both the bulk/export endpoints and the Excel workbook —
+// same fixed fields the drawer already shows, in the same order, so the
+// paste and the on-screen card read the same way.
+const EXPORT_FIXED_COLUMNS: Array<{ label: string; field: keyof ItemMasterRow }> = [
+  { label: 'Item Code', field: 'itemCode' },
+  { label: 'Item Name', field: 'itemName' },
+  { label: 'Brand', field: 'brand' },
+  { label: 'Catalogue No', field: 'catalogueNo' },
+  { label: 'SAP Item Code', field: 'sapItemCode' },
+  { label: 'Alias', field: 'alias' },
+  { label: 'Main Group', field: 'mainGroup' },
+  { label: 'Sub Group', field: 'subGroup' },
+  { label: 'UOM', field: 'uom' },
+  { label: 'HSN Description', field: 'hsnDescription' },
+];
 
 // "%" and "_" are LIKE wildcards, and "\" is the escape character itself.
 // Left unescaped, a search for "100%" matches every row that starts with
@@ -12,9 +29,21 @@ function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
 
+// A user can only ever add this many extra filters at once — enough to be
+// genuinely useful without letting one request build an unbounded WHERE
+// clause out of arbitrary jsonb keys.
+const MAX_EXTRA_FILTERS = 5;
+
 @Injectable()
 export class ItemSearchService {
   private facetsCache: { at: number; value: { mainGroup: { value: string; count: number }[]; subGroup: { value: string; count: number }[]; brand: { value: string; count: number }[] } } | null = null;
+  private extraFieldsCache: { at: number; value: { key: string; count: number }[] } | null = null;
+  // Per-field, unlike the two caches above — the value list for one extra
+  // column is cheap to keep separately and there's no fixed set of fields
+  // to pre-size a single cache slot for. Found via a stress test: this
+  // endpoint was running its jsonb aggregation query on every single call,
+  // 3-5x slower than every other facet-style endpoint, which are cached.
+  private extraFacetCache = new Map<string, { at: number; value: { value: string; count: number }[] }>();
 
   constructor(
     @InjectRepository(ItemMasterRow) private rowRepo: Repository<ItemMasterRow>,
@@ -29,7 +58,7 @@ export class ItemSearchService {
       .andWhere("batch.status = 'published'");
   }
 
-  async search(query: { q?: string, mainGroup?: string, subGroup?: string, brand?: string, limit?: number, offset?: number }) {
+  async search(query: { q?: string, mainGroup?: string, subGroup?: string, brand?: string, extra?: Record<string, string>, limit?: number, offset?: number }) {
     const qb = this.visibleRows();
 
     // Trim before testing for emptiness: values pasted out of Excel or Tally
@@ -70,6 +99,19 @@ export class ItemSearchService {
       qb.andWhere('row.brand = :brand', { brand });
     }
 
+    // Any field a user picked from "+ Add filter" — matched against
+    // row.extra by its exact key, same exact-match semantics as the fixed
+    // group/brand filters above.
+    if (query.extra) {
+      const pairs = Object.entries(query.extra)
+        .map(([key, value]) => [key?.trim(), value?.trim()] as const)
+        .filter(([key, value]) => key && value)
+        .slice(0, MAX_EXTRA_FILTERS);
+      pairs.forEach(([key, value], i) => {
+        qb.andWhere(`row.extra ->> :extraKey${i} = :extraVal${i}`, { [`extraKey${i}`]: key, [`extraVal${i}`]: value });
+      });
+    }
+
     qb.orderBy('row.item_code', 'ASC');
 
     const limit = query.limit || 50;
@@ -89,6 +131,8 @@ export class ItemSearchService {
 
   clearFacetsCache() {
     this.facetsCache = null;
+    this.extraFieldsCache = null;
+    this.extraFacetCache.clear();
   }
 
   async getFacets() {
@@ -124,18 +168,114 @@ export class ItemSearchService {
     return value;
   }
 
+  /** Every column name currently present in at least one live row's
+   *  `extra` — the source list for the "+ Add filter" picker. Cached the
+   *  same way as getFacets(): this scans every live row's jsonb keys, which
+   *  is too expensive to redo on every keystroke. */
+  async getAvailableExtraFields() {
+    if (this.extraFieldsCache && Date.now() - this.extraFieldsCache.at < 60_000) {
+      return this.extraFieldsCache.value;
+    }
+    const rows: Array<{ key: string; count: string }> = await this.rowRepo.manager.query(`
+      SELECT key, COUNT(*)::int AS count
+        FROM item_master_row r
+        JOIN item_master_batch b ON b.id = r.batch_id
+        CROSS JOIN LATERAL jsonb_object_keys(r.extra) AS key
+       WHERE r.valid_to IS NULL AND r.is_deleted = false AND b.status = 'published'
+       GROUP BY key
+       ORDER BY count DESC, key ASC
+    `);
+    const value = rows.map((r) => ({ key: r.key, count: Number(r.count) }));
+    this.extraFieldsCache = { at: Date.now(), value };
+    return value;
+  }
+
+  /** Distinct values (+counts) for one extra-column, for the dropdown once
+   *  a field has been added as a filter. Same shape as getFacets()'s
+   *  per-column facets, just keyed by an arbitrary jsonb key instead of a
+   *  fixed column — the key is always bound as a parameter, never
+   *  interpolated into the query text. */
+  async getExtraFacet(field: string) {
+    const key = field?.trim();
+    if (!key) return [];
+
+    const cached = this.extraFacetCache.get(key);
+    if (cached && Date.now() - cached.at < 60_000) {
+      return cached.value;
+    }
+
+    const rows = await this.visibleRows()
+      .select('row.extra ->> :extraField', 'value')
+      .addSelect('COUNT(*)', 'count')
+      .andWhere('row.extra ? :extraField', { extraField: key })
+      .groupBy('row.extra ->> :extraField')
+      .orderBy('count', 'DESC')
+      .setParameter('extraField', key)
+      .getRawMany();
+    const value = rows
+      .filter((g) => g.value != null && g.value !== '')
+      .map((g) => ({ value: g.value, count: parseInt(g.count, 10) }));
+    // `field` is client-supplied and unvalidated against the real column
+    // list — a buggy or malicious caller sending many distinct junk values
+    // could otherwise grow this map without bound. Real usage only ever
+    // touches however many columns an uploaded file actually has (a
+    // few dozen at most), so this cap is never hit in practice.
+    if (this.extraFacetCache.size >= 200) {
+      this.extraFacetCache.clear();
+    }
+    this.extraFacetCache.set(key, { at: Date.now(), value });
+    return value;
+  }
+
   async getItemHistory(itemCode: string) {
     const code = itemCode?.trim();
     if (!code) return [];
     return this.rowRepo.createQueryBuilder('row')
       .innerJoin('row.batch', 'batch')
       .where('row.item_code = :code', { code })
-      .andWhere('row.is_deleted = false')
       .andWhere("batch.status = 'published'")
-      // valid_to IS NULL (the live version) must sort first: two rows can
-      // share a valid_from, and the drawer treats history[0] as current.
+      // is_deleted is NOT filtered here (unlike visibleRows()): a deleted
+      // item's trail — including who removed it and when — should still
+      // show in its own history, it just won't appear in search results.
+      //
+      // valid_to IS NULL (the live/most-recent version) must sort first:
+      // two rows can share a valid_from, and the drawer treats history[0]
+      // as current.
       .orderBy('CASE WHEN row.valid_to IS NULL THEN 0 ELSE 1 END', 'ASC')
       .addOrderBy('row.valid_from', 'DESC')
       .getMany();
+  }
+
+  /** Current live rows for a set of item codes — what the selection tray's
+   *  "Copy details" and "Export to Excel" both act on (a single-item
+   *  export from the drawer is just a one-code call to this). */
+  async getCurrentRows(itemCodes: string[]) {
+    const codes = [...new Set(itemCodes.map((c) => c?.trim()).filter((c): c is string => Boolean(c)))].slice(0, 200);
+    if (codes.length === 0) return [];
+    return this.visibleRows()
+      .andWhere('row.item_code = ANY(:codes)', { codes })
+      .orderBy('row.item_code', 'ASC')
+      .getMany();
+  }
+
+  /** Header row = the fixed fields every item has, plus the union of
+   *  `extra` keys actually present across the selection — so a plain
+   *  master-code-layout item and a 48-column SAP export sit in the same
+   *  sheet without either one padding out columns the other never had. */
+  buildExportWorkbook(rows: ItemMasterRow[]): ExcelJS.Workbook {
+    const extraKeys = [...new Set(rows.flatMap((r) => Object.keys(r.extra || {})))].sort();
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Items');
+    sheet.addRow([...EXPORT_FIXED_COLUMNS.map((c) => c.label), ...extraKeys]);
+    for (const row of rows) {
+      sheet.addRow([
+        ...EXPORT_FIXED_COLUMNS.map((c) => (row[c.field] as string | null) ?? ''),
+        ...extraKeys.map((key) => row.extra?.[key] ?? ''),
+      ]);
+    }
+    sheet.getRow(1).font = { bold: true };
+    sheet.columns.forEach((col) => { col.width = 20; });
+    return workbook;
   }
 }
