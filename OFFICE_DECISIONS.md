@@ -6,7 +6,7 @@ Everything in `ops/` (backups, TLS) is built to work once these are decided, but
 
 2. **Is the uploads folder on redundant storage?** Same risk, different data — `backend/var/uploads` holds every original file anyone's ever uploaded. Being included in the backup script means it's recoverable after a mistake, but a RAID array or NAS-backed disk would mean it survives a live failure without needing a restore at all. Worth asking whatever the office already has before buying anything.
 
-3. **What server is this actually running on?** Everything in this project assumes one on-prem machine running Postgres, the backend, Caddy, and (optionally) OpenSearch at once. Confirm that machine exists, has the memory to spare (OpenSearch alone wants ~1GB+), and has someone responsible for it — patching, disk space, uptime.
+3. **What server is this actually running on?** Everything in this project assumes one on-prem machine running Postgres, pgbouncer, redis, the backend, and Caddy at once. Confirm that machine exists, has the memory to spare, and has someone responsible for it — patching, disk space, uptime.
 
 4. **How do office machines resolve the server's hostname?** TLS setup (`ops/Caddyfile`) needs every machine to reach the server at a consistent hostname, not just its IP. If the office has real internal DNS, that's the clean answer — otherwise it's a `hosts` file entry per machine, which works fine for a small office but is one more thing to maintain by hand as machines change.
 

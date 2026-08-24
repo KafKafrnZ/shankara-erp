@@ -33,5 +33,3 @@ docker-data/
 /n2.json
 /t2.json
 /t3.json
-backend/gather20*.txt
-backend/scripts/s20-gather.ps1
