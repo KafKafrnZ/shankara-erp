@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { api, isApiError } from '../lib/api.ts';
 
@@ -37,6 +37,40 @@ export function ItemEditForm({ initial, lockItemCode, onCancel, onSaved }: Props
   const [values, setValues] = useState<ItemFormValues>(initial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [knownFields, setKnownFields] = useState<string[]>([]);
+  const merged = useRef(false);
+
+  // Every extra column the live sheet has anywhere, not just the ones this
+  // one item happens to carry — so "add a new instance of data" shows the
+  // whole sheet's shape up front instead of making someone retype a field
+  // name from memory. Merged into `extra` once, as blank rows for whatever
+  // known fields aren't already present; the free-form "+ Add a field" flow
+  // below stays for a column that doesn't exist anywhere yet.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const fields = await api<Array<{ key: string; count: number }>>('/api/item-search/fields');
+        if (cancelled) return;
+        const keys = fields.map((f) => f.key).sort((a, b) => a.localeCompare(b));
+        setKnownFields(keys);
+        if (!merged.current) {
+          merged.current = true;
+          setValues((prev) => {
+            const present = new Set(prev.extra.map((r) => r.key));
+            const missing = keys.filter((k) => !present.has(k)).map((key) => ({ key, value: '' }));
+            return missing.length === 0 ? prev : { ...prev, extra: [...prev.extra, ...missing] };
+          });
+        }
+      } catch {
+        /* the fixed fields and free-form "+ Add a field" still work without this */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const setField = (key: keyof Omit<ItemFormValues, 'extra'>, v: string) =>
     setValues((prev) => ({ ...prev, [key]: v }));
@@ -143,34 +177,55 @@ export function ItemEditForm({ initial, lockItemCode, onCancel, onSaved }: Props
       </div>
 
       <div className="item-edit-extra">
-        <h3>Other fields</h3>
-        {values.extra.length === 0 && (
-          <p className="muted">Nothing else on this item yet.</p>
+        <h3>Sheet fields</h3>
+        <p className="muted">Every column the catalog sheet has — leave any of these blank if this item has no value for it.</p>
+        <div className="item-edit-grid">
+          {values.extra.map((row, i) =>
+            knownFields.includes(row.key) ? (
+              <label className="field" key={row.key}>
+                <span>{row.key}</span>
+                <input
+                  value={row.value}
+                  onChange={(e) => setExtraRow(i, 'value', e.target.value)}
+                />
+              </label>
+            ) : null,
+          )}
+        </div>
+      </div>
+
+      <div className="item-edit-extra">
+        <h3>Custom fields</h3>
+        <p className="muted">A column that doesn't exist anywhere in the sheet yet.</p>
+        {values.extra.filter((row) => !knownFields.includes(row.key)).length === 0 && (
+          <p className="muted">None added.</p>
         )}
-        {values.extra.map((row, i) => (
-          <div key={i} className="item-edit-extra-row">
-            <input
-              placeholder="Field name"
-              aria-label="Field name"
-              value={row.key}
-              onChange={(e) => setExtraRow(i, 'key', e.target.value)}
-            />
-            <input
-              placeholder="Value"
-              aria-label="Field value"
-              value={row.value}
-              onChange={(e) => setExtraRow(i, 'value', e.target.value)}
-            />
-            <button
-              type="button"
-              className="filter-bar-remove"
-              aria-label="Remove this field"
-              onClick={() => removeExtraRow(i)}
-            >
-              ×
-            </button>
-          </div>
-        ))}
+        {values.extra.map((row, i) =>
+          knownFields.includes(row.key) ? null : (
+            <div key={i} className="item-edit-extra-row">
+              <input
+                placeholder="Field name"
+                aria-label="Field name"
+                value={row.key}
+                onChange={(e) => setExtraRow(i, 'key', e.target.value)}
+              />
+              <input
+                placeholder="Value"
+                aria-label="Field value"
+                value={row.value}
+                onChange={(e) => setExtraRow(i, 'value', e.target.value)}
+              />
+              <button
+                type="button"
+                className="filter-bar-remove"
+                aria-label="Remove this field"
+                onClick={() => removeExtraRow(i)}
+              >
+                ×
+              </button>
+            </div>
+          ),
+        )}
         <button type="button" className="btn btn-ghost" onClick={addExtraRow}>
           + Add a field
         </button>

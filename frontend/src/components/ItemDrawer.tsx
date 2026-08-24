@@ -6,6 +6,7 @@ import { useAuth } from '../auth/useAuth.ts';
 import { ItemEditForm, emptyItemFormValues } from './ItemEditForm.tsx';
 import type { ItemFormValues } from './ItemEditForm.tsx';
 import { buildExcelPasteText, exportToExcel } from '../lib/excel-export.ts';
+import type { ExportableRow } from '../lib/excel-export.ts';
 
 type Props = {
   /** null means "creating a new item" — no history to load, no code yet. */
@@ -62,6 +63,7 @@ export function ItemDrawer({ itemCode, onClose, onCreated }: Props) {
   const [copyText, setCopyText] = useState('');
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
+  const [copyError, setCopyError] = useState('');
   const [mode, setMode] = useState<'view' | 'edit'>('view');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -115,19 +117,31 @@ export function ItemDrawer({ itemCode, onClose, onCreated }: Props) {
   const current = history[0];
   const key = current ? itemPrimaryKey(current) : null;
 
-  // Copies every field shown on screen as a tab-separated header row + one
+  // Copies every field the catalog has as a tab-separated header row + one
   // data row — pasted into an open Excel sheet, that lands as real columns
-  // immediately, the same shape "Export to Excel" produces as a file.
+  // immediately, the same shape "Export to Excel" produces as a file. Goes
+  // through /bulk (not the already-loaded `current`) so blank fields this
+  // item has no value for still show up as empty columns, matching every
+  // other field the sheet has — not just whatever happens to be set here.
   const copyDetails = async () => {
     if (!current) return;
-    const text = buildExcelPasteText([current]);
+    setCopyError('');
     try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setCopyText('');
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      setCopyText(text);
+      const rows = await api<ExportableRow[]>('/api/item-search/bulk', {
+        method: 'POST',
+        body: JSON.stringify({ itemCodes: [current.itemCode] }),
+      });
+      const text = buildExcelPasteText(rows);
+      try {
+        await navigator.clipboard.writeText(text);
+        setCopied(true);
+        setCopyText('');
+        window.setTimeout(() => setCopied(false), 1500);
+      } catch {
+        setCopyText(text);
+      }
+    } catch (err) {
+      setCopyError(isApiError(err) ? err.message : "Couldn't copy — try again.");
     }
   };
 
@@ -326,6 +340,7 @@ export function ItemDrawer({ itemCode, onClose, onCreated }: Props) {
               )}
 
               {exportError && <p className="form-error" role="alert">{exportError}</p>}
+              {copyError && <p className="form-error" role="alert">{copyError}</p>}
 
               {copyText && (
                 <label className="field" style={{ marginBottom: '16px' }}>

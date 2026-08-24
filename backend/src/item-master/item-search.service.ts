@@ -258,10 +258,29 @@ export class ItemSearchService {
       .getMany();
   }
 
+  /** Same rows as getCurrentRows(), but with every row's `extra` padded out
+   *  to the FULL set of extra fields known anywhere in the live catalog
+   *  (blank string for any field this particular item has no value for).
+   *  Copy/export must always show every column the sheet has — the head's
+   *  explicit ask was "all the fields are important, no matter there's
+   *  data or not" — so callers must never fall back to whatever keys
+   *  happen to be present on the selected rows themselves. */
+  async getCurrentRowsForExport(itemCodes: string[]) {
+    const [rows, fields] = await Promise.all([
+      this.getCurrentRows(itemCodes),
+      this.getAvailableExtraFields(),
+    ]);
+    const allKeys = fields.map((f) => f.key);
+    return rows.map((row) => ({
+      ...row,
+      extra: Object.fromEntries(allKeys.map((key) => [key, row.extra?.[key] ?? ''])),
+    }));
+  }
+
   /** Header row = the fixed fields every item has, plus the union of
-   *  `extra` keys actually present across the selection — so a plain
-   *  master-code-layout item and a 48-column SAP export sit in the same
-   *  sheet without either one padding out columns the other never had. */
+   *  `extra` keys present across the given rows. Callers that want every
+   *  known catalog column (not just what these rows happen to have) should
+   *  pass rows from getCurrentRowsForExport(), which pre-pads them. */
   buildExportWorkbook(rows: ItemMasterRow[]): ExcelJS.Workbook {
     const extraKeys = [...new Set(rows.flatMap((r) => Object.keys(r.extra || {})))].sort();
 

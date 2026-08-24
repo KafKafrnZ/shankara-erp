@@ -228,14 +228,27 @@ use, rather than a parallel "just UPDATE the row" path:
   buttons (steward-only) drive this. Deleting shows a confirm banner first
   (`ItemDrawer.tsx`); a deleted item's drawer offers "Add it back," which
   reopens the edit form pre-filled from its last known values.
+- The form (`ItemEditForm.tsx`) fetches `GET /api/item-search/fields` on
+  open and renders every known extra column as its own labeled "Sheet
+  fields" input, blank unless this item already has a value — so adding a
+  new row shows the whole sheet's shape instead of requiring someone to
+  retype a field name from memory. A separate "Custom fields" list (the
+  original free-typed key + value rows) stays underneath for a column that
+  doesn't exist anywhere in the catalog yet; typing a name that matches a
+  known field re-classifies that row into "Sheet fields" automatically.
+  Blank known fields are still submitted (as `extra[key] = ''`) rather than
+  dropped — matching the "every column matters, filled or not" rule in
+  §7.
 
 ---
 
 ## 7. Export, copy, and multi-select
 
 - **Single item** — the drawer's `Copy details` (clipboard) and `Export to
-  Excel` (downloads a real `.xlsx`) both act on `GET
-  /api/item-search/history/:itemCode`'s current row.
+  Excel` (downloads a real `.xlsx`) both act on `POST
+  /api/item-search/bulk` / `POST /api/item-search/export` for that one
+  item code — not the already-loaded history row — so both use the same
+  padded data described below.
 - **Multiple items** — check the box on any result row; a sticky tray at
   the bottom of the screen tracks the selection (survives across searches
   on purpose — pick some, search again, pick more), with its own `Copy
@@ -243,11 +256,15 @@ use, rather than a parallel "just UPDATE the row" path:
   and individually remove picks before acting. These call `POST
   /api/item-search/bulk` (JSON) and `POST /api/item-search/export`
   (`.xlsx`, via `exceljs`) — both capped at 200 item codes per request.
-- Both the clipboard copy and the `.xlsx` export use the same column set:
-  the 10 fixed fields, plus every `extra` key present across the selected
-  rows (union, alphabetical). The clipboard version is tab-separated —
-  pasting it into an open Excel sheet lands as real columns, not one
-  messy cell (`frontend/src/lib/excel-export.ts`).
+- Both endpoints go through `ItemSearchService.getCurrentRowsForExport()`,
+  which pads every returned row's `extra` out to the **full set of extra
+  fields known anywhere in the live catalog** (`getAvailableExtraFields()`),
+  filling `''` for any field a given item has no value for — not just the
+  keys the selected rows themselves happen to carry. So a copy/export
+  always has the same column set as the sheet itself, blank cells and all:
+  10 fixed fields + every known `extra` key (alphabetical). The clipboard
+  version is tab-separated — pasting it into an open Excel sheet lands as
+  real columns, not one messy cell (`frontend/src/lib/excel-export.ts`).
 
 ---
 

@@ -45,13 +45,13 @@ export class ItemSearchController {
   @Post('bulk')
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
   async bulk(@Body() body: BulkItemCodesDto) {
-    return this.searchService.getCurrentRows(body.itemCodes);
+    return this.searchService.getCurrentRowsForExport(body.itemCodes);
   }
 
   @Post('export')
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
   async export(@Body() body: BulkItemCodesDto, @Res() res: Response) {
-    const rows = await this.searchService.getCurrentRows(body.itemCodes);
+    const rows = await this.searchService.getCurrentRowsForExport(body.itemCodes);
     const workbook = this.searchService.buildExportWorkbook(rows);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename="catalog-export.xlsx"');
