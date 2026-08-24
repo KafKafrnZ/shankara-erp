@@ -129,6 +129,17 @@ sudo systemctl restart caddy
 sudo systemctl enable caddy
 ```
 
+**Also set `TRUST_PROXY=true` in the backend's `.env` on this server, then
+restart the backend.** Caddy's `reverse_proxy` already forwards the real
+client IP via `X-Forwarded-For` by default — nothing to configure on the
+Caddy side for that. But without `TRUST_PROXY=true`, the backend still sees
+every request as coming from `127.0.0.1` (Caddy's own connection to it), so
+the per-IP rate limiter silently collapses the entire office into one shared
+bucket instead of limiting each device separately. Leave it `false` for any
+setup where the backend is reachable directly (dev, or no proxy in front) —
+setting it `true` without a real proxy in front would let a client fake its
+own IP by sending its own `X-Forwarded-For` header.
+
 ### Trusting the certificate on office devices
 
 Because the cert comes from Caddy's own internal CA rather than a public one,
