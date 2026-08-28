@@ -415,13 +415,17 @@ the machine this was tested on, which also runs everything else at once).
   editing again.
 
 **Testing / quality**
-- No frontend test suite (Vitest/RTL or otherwise) — this session's UI
-  verification was manual (screenshots + code review), not automated
-  regression coverage. Backend has 7 unit + 19 e2e tests, reasonable but
-  thin for a system this size.
-- ~560 pre-existing lint issues (mostly Prettier formatting, ~440
-  auto-fixable), explicitly non-blocking in CI so it doesn't gate
-  unrelated work — real debt, not urgent.
+- Frontend now has a Vitest + React Testing Library suite (`npm run
+  test`, wired into CI's frontend job), but it's a starting point, not
+  broad coverage — a handful of pure-logic modules and one component.
+  Most UI verification is still manual (screenshots + code review), not
+  automated regression coverage. Backend has 19 unit + 19 e2e tests,
+  reasonable but thin for a system this size.
+- Backend eslint backlog: `npx eslint --fix` was run and cleared the
+  ~440 auto-fixable (Prettier-style) issues. ~390 remain, all
+  `@typescript-eslint/no-unsafe-*` findings that need real type
+  annotations, not auto-fixable — explicitly non-blocking in CI so it
+  doesn't gate unrelated work; real debt, not urgent.
 
 ---
 
@@ -436,6 +440,7 @@ E2E_DATABASE_NAME=shankara_erp_e2e DATABASE_PORT=5432 npm run test:e2e
 # frontend
 npm run build                             # tsc -b && vite build
 npm run lint
+npm run test                              # vitest run
 ```
 
 `backend/test/setup-e2e-env.ts` **refuses to run e2e tests against
@@ -445,8 +450,8 @@ touch real production/demo data.
 
 CI (`.github/workflows/ci.yml`): backend job runs against a real ephemeral
 Postgres service container — type-check, non-blocking lint, unit tests,
-migrations, seed, e2e, build. Frontend job — lint, build. Both must be
-green on `master`/PRs.
+migrations, seed, e2e, build. Frontend job — lint, unit tests, build. Both
+must be green on `master`/PRs.
 
 ---
 
