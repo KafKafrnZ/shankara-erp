@@ -6,6 +6,7 @@ import { Throttle } from '@nestjs/throttler';
 import { Roles } from '../auth/roles.decorator';
 import { ItemMasterService } from './item-master.service';
 import { ParseIdPipe } from '../common/parse-id.pipe';
+import { isXlsxSignature } from '../common/is-xlsx';
 
 type AuthedRequest = Request & { user: any };
 
@@ -33,7 +34,7 @@ export class ItemUploadsController {
     // surface to the user as "invalid signature: 0x73696874". Reject it here,
     // in words that say what to do about it.
     const ext = file.originalname.slice(file.originalname.lastIndexOf('.')).toLowerCase();
-    if (!ITEM_UPLOAD_EXTENSIONS.includes(ext)) {
+    if (!ITEM_UPLOAD_EXTENSIONS.includes(ext) || !isXlsxSignature(file.buffer)) {
       throw new BadRequestException(
         `"${file.originalname}" isn't a spreadsheet we can read. Please upload an Excel .xlsx workbook exported from Tally.`,
       );
