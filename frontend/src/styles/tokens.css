@@ -24,6 +24,13 @@
   --accent: var(--sb-red);
   --accent-deep: var(--sb-red-deep);
 
+  /* backgrounds paired with themed text (--ink) elsewhere in index.css —
+     kept as tokens, not literals, so dark mode can't leave text stranded
+     on a background that never repainted */
+  --header-bg: rgba(255, 255, 255, 0.94);
+  --accent-tint-bg: #fff5f5;
+  --surface-pressed: #e2e2e2;
+
   /* semantic state — deliberately distinct from --accent so critical
      pills don't blend into brand-red chrome (header, CTAs) */
   --success-bg: #e9f5ee; --success-text: #146c43; --success-line: #146c43;
@@ -36,4 +43,24 @@
   --radius: 6px;
   --transition-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-base: 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+[data-theme="dark"] {
+  --bg: #111111;
+  --surface: #1a1a1a;
+  --surface-sunken: #2a2a2a;
+  --ink: #f5f5f5;
+  --muted: #a3a3a3;
+  --line: #333333;
+
+  --header-bg: rgba(17, 17, 17, 0.94);
+  --accent-tint-bg: #2a1416;
+  --surface-pressed: #3a3a3a;
+
+  color-scheme: dark;
+
+  --success-bg: #092c1b; --success-text: #86e0ad; --success-line: #146c43;
+  --warning-bg: #331f00; --warning-text: #ffd085; --warning-line: #8a5300;
+  --critical-bg: #3d110d; --critical-text: #ff9b91; --critical-line: #7a231b;
+  --info-bg: #2a2a2a; --info-text: #a3a3a3; --info-line: #333333;
 }

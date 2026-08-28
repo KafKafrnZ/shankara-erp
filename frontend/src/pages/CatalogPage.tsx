@@ -8,7 +8,7 @@ import { FilterBar } from '../components/FilterBar.tsx';
 import { SelectionTray } from '../components/SelectionTray.tsx';
 import { itemPrimaryKey } from '../lib/item-key.ts';
 import { useAuth } from '../auth/useAuth.ts';
-
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 
 interface SearchHit {
   id: string;
@@ -77,6 +77,19 @@ export function CatalogPage() {
   const subGroup = searchParams.get('subGroup') || '';
   const brand = searchParams.get('brand') || '';
   const offset = parseInt(searchParams.get('offset') || '0', 10) || 0;
+  // Which way the page just moved (Next vs Previous vs a filter/search
+  // reset) — derived from the offset change itself rather than set at each
+  // call site, so every path that can change `offset` (pager buttons,
+  // filters, a fresh search) gets a correctly-directional row animation for
+  // free instead of only the two pager buttons.
+  const prevOffsetRef = useRef(offset);
+  const [pageDir, setPageDir] = useState(0);
+  useEffect(() => {
+    const prev = prevOffsetRef.current;
+    setPageDir(offset > prev ? 1 : offset < prev ? -1 : 0);
+    prevOffsetRef.current = offset;
+  }, [offset]);
+  const prefersReducedMotion = useReducedMotion();
   const browse = searchParams.get('browse') === 'true';
   const itemCode = searchParams.get('itemCode');
   const creatingNew = searchParams.get('new') === 'true';
@@ -346,6 +359,31 @@ export function CatalogPage() {
   const hasPrev = offset > 0;
   const hasNext = hitCount === PAGE_SIZE;
 
+  // Entrance keeps its staggered rise-and-settle — that's the part that
+  // reads as "the new page arriving". Exit is deliberately fast and
+  // un-staggered: it used to inherit the same per-row `delay`, so with a
+  // full 50-row page the last exiting row wouldn't even start leaving until
+  // ~750ms in, and AnimatePresence's `mode="wait"` (required here — table
+  // rows aren't absolutely positioned, so overlapping enter/exit would
+  // double up visually) blocked the next page behind all of that. A quick,
+  // non-staggered exit keeps that safety without the long dead pause.
+  const rowVariants = {
+    initial: ({ dir }: { i: number; dir: number }) => ({ opacity: 0, y: 12, x: dir * 16 }),
+    animate: ({ i }: { i: number; dir: number }) => ({
+      opacity: 1,
+      y: 0,
+      x: 0,
+      transition: prefersReducedMotion
+        ? { duration: 0 }
+        : { type: 'spring' as const, damping: 22, stiffness: 250, delay: i * 0.015 },
+    }),
+    exit: ({ dir }: { i: number; dir: number }) => ({
+      opacity: 0,
+      x: dir * -16,
+      transition: prefersReducedMotion ? { duration: 0 } : { duration: 0.12 },
+    }),
+  };
+
   // The search bar lives in one fixed spot in the tree regardless of
   // isResults — only the content below it swaps. Landing and results used
   // to be two separate return statements with their own <form>/<input>,
@@ -410,7 +448,6 @@ export function CatalogPage() {
 
           <section className="results-main">
             {error && <p className="form-error" role="alert">{error}</p>}
-            {loading && <p className="muted">Searching…</p>}
             {!loading && result && result.hits.length === 0 && (
               <div className="empty-state">
                 <h2>No items matched</h2>
@@ -432,10 +469,16 @@ export function CatalogPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {result.hits.map((hit) => {
+                      <AnimatePresence mode="wait">
+                      {result.hits.map((hit, index) => {
                         const key = itemPrimaryKey(hit);
                         return (
-                        <tr
+                        <motion.tr
+                          variants={rowVariants}
+                          custom={{ i: index, dir: pageDir }}
+                          initial="initial"
+                          animate="animate"
+                          exit="exit"
                           key={hit.id}
                           className="clickable"
                           tabIndex={0}
@@ -468,9 +511,10 @@ export function CatalogPage() {
                             {hit.subGroup && ` / ${hit.subGroup}`}
                           </td>
                           <td>{hit.uom || '—'}</td>
-                        </tr>
+                        </motion.tr>
                         );
                       })}
+                      </AnimatePresence>
                     </tbody>
                   </table>
                 </div>
@@ -505,6 +549,7 @@ export function CatalogPage() {
         </div>
       )}
 
+      <AnimatePresence>
       {(itemCode || creatingNew) && (
         <ItemDrawer
           itemCode={creatingNew ? null : itemCode}
@@ -512,6 +557,7 @@ export function CatalogPage() {
           onCreated={(code) => openItem(code)}
         />
       )}
+      </AnimatePresence>
 
       <SelectionTray
         items={[...selected].map(([code, name]) => ({ code, name }))}

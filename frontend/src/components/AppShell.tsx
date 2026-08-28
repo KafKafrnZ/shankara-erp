@@ -7,6 +7,7 @@ import { LogoChip } from './BrandLogo.tsx';
 import { DotField } from './DotField.tsx';
 import { HowToOverlay } from './HowToOverlay.tsx';
 import { DevPanel } from './DevPanel.tsx';
+import { motion, useReducedMotion } from 'framer-motion';
 
 // Icon travels with the word everywhere — someone learning this system by
 // watching, not reading, recognizes the shape of "Search" and "Upload"
@@ -35,6 +36,15 @@ export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const [howtoOpen, setHowtoOpen] = useState(() => !readHowToDismissed());
+  const prefersReducedMotion = useReducedMotion();
+  const navBgTransition = prefersReducedMotion
+    ? { duration: 0 }
+    : { type: 'spring' as const, damping: 25, stiffness: 300 };
+
+  useEffect(() => {
+    const saved = localStorage.getItem('theme');
+    if (saved) document.documentElement.setAttribute('data-theme', saved);
+  }, []);
 
   useEffect(() => {
     void refreshAsOf();
@@ -67,11 +77,25 @@ export function AppShell() {
           <span className="header-wordmark">Shankara ERP</span>
           <nav className="header-nav" aria-label="Primary">
             <NavLink to="/catalog" end className={({ isActive }) => (isActive ? 'nav-link nav-link-catalog active' : 'nav-link nav-link-catalog')}>
-              <SearchIcon /> Find item
+              {({ isActive }) => (
+                <>
+                  {isActive && <motion.div layoutId="nav-bg" style={{ position: 'absolute', inset: 0, background: 'var(--ink)', borderRadius: '999px', zIndex: -1 }} transition={navBgTransition} />}
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <SearchIcon /> Find item
+                  </span>
+                </>
+              )}
             </NavLink>
             {user.role === 'steward' && (
               <NavLink to="/catalog/upload" className={({ isActive }) => (isActive ? 'nav-link nav-link-catalog active' : 'nav-link nav-link-catalog')}>
-                <UploadIcon /> Upload items
+                {({ isActive }) => (
+                  <>
+                    {isActive && <motion.div layoutId="nav-bg" style={{ position: 'absolute', inset: 0, background: 'var(--ink)', borderRadius: '999px', zIndex: -1 }} transition={navBgTransition} />}
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <UploadIcon /> Upload items
+                    </span>
+                  </>
+                )}
               </NavLink>
             )}
           </nav>
@@ -82,7 +106,14 @@ export function AppShell() {
           </button>
           {user.role === 'steward' && (
             <NavLink to="/admin/users" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-              People
+              {({ isActive }) => (
+                <>
+                  {isActive && <motion.div layoutId="nav-bg" style={{ position: 'absolute', inset: 0, background: 'var(--accent)', borderRadius: '999px', zIndex: -1 }} transition={navBgTransition} />}
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    People
+                  </span>
+                </>
+              )}
             </NavLink>
           )}
           <span className="pill pill-info">{companyLabel}</span>
@@ -94,6 +125,14 @@ export function AppShell() {
               <span className="user-role">{roleLabel}</span>
             </span>
           </span>
+          <button type="button" className="btn btn-ghost" onClick={() => {
+            const current = document.documentElement.getAttribute('data-theme');
+            const next = current === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', next);
+            localStorage.setItem('theme', next);
+          }} title="Toggle Theme">
+            🌓
+          </button>
           <button type="button" className="btn btn-ghost" onClick={() => void onLogout()}>
             Logout
           </button>

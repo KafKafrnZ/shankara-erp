@@ -5,9 +5,10 @@ import { itemPrimaryKey } from '../lib/item-key.ts';
 import { useAuth } from '../auth/useAuth.ts';
 import { ItemEditForm, emptyItemFormValues } from './ItemEditForm.tsx';
 import type { ItemFormValues } from './ItemEditForm.tsx';
+import { ItemUploadFlow } from './ItemUploadFlow.tsx';
 import { buildExcelPasteText, exportToExcel } from '../lib/excel-export.ts';
 import type { ExportableRow } from '../lib/excel-export.ts';
-
+import { motion, useReducedMotion } from 'framer-motion';
 type Props = {
   /** null means "creating a new item" — no history to load, no code yet. */
   itemCode: string | null;
@@ -53,6 +54,7 @@ function formValuesFromRow(row: ItemHistoryRow): ItemFormValues {
 
 export function ItemDrawer({ itemCode, onClose, onCreated }: Props) {
   const { user } = useAuth();
+  const prefersReducedMotion = useReducedMotion();
   const isSteward = user?.role === 'steward';
   const creating = itemCode === null;
 
@@ -65,6 +67,7 @@ export function ItemDrawer({ itemCode, onClose, onCreated }: Props) {
   const [exportError, setExportError] = useState('');
   const [copyError, setCopyError] = useState('');
   const [mode, setMode] = useState<'view' | 'edit'>('view');
+  const [createMode, setCreateMode] = useState<'manual' | 'upload'>('manual');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
@@ -79,6 +82,7 @@ export function ItemDrawer({ itemCode, onClose, onCreated }: Props) {
 
   useEffect(() => {
     setMode('view');
+    setCreateMode('manual');
     setConfirmingDelete(false);
     setDeleteError('');
     if (creating || !itemCode) {
@@ -187,8 +191,24 @@ export function ItemDrawer({ itemCode, onClose, onCreated }: Props) {
 
   return (
     <>
-      <div className="drawer-backdrop" onClick={onClose} />
-      <aside className="drawer" role="dialog" aria-modal="true" aria-label={creating ? 'New item' : 'Item detail'}>
+      <motion.div
+        className="drawer-backdrop"
+        onClick={onClose}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: prefersReducedMotion ? 0 : 0.2 }}
+      />
+      <motion.aside
+        className="drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-label={creating ? 'New item' : 'Item detail'}
+        initial={{ x: prefersReducedMotion ? 0 : '100%' }}
+        animate={{ x: 0 }}
+        exit={{ x: prefersReducedMotion ? 0 : '100%' }}
+        transition={prefersReducedMotion ? { duration: 0 } : { type: 'spring', damping: 25, stiffness: 200 }}
+      >
         <div className="drawer-head">
           <div>
             {creating ? (
@@ -237,12 +257,46 @@ export function ItemDrawer({ itemCode, onClose, onCreated }: Props) {
 
         <div className="drawer-body">
           {creating && (
-            <ItemEditForm
-              initial={emptyItemFormValues()}
-              lockItemCode={false}
-              onCancel={onClose}
-              onSaved={(code) => onCreated?.(code)}
-            />
+            <>
+              <div className="item-create-tabs" role="tablist" aria-label="Add items">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={createMode === 'manual'}
+                  className={createMode === 'manual' ? 'btn btn-primary' : 'btn btn-secondary'}
+                  onClick={() => setCreateMode('manual')}
+                >
+                  Add one by hand
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={createMode === 'upload'}
+                  className={createMode === 'upload' ? 'btn btn-primary' : 'btn btn-secondary'}
+                  onClick={() => setCreateMode('upload')}
+                >
+                  Upload an Excel sheet
+                </button>
+              </div>
+
+              {createMode === 'manual' ? (
+                <ItemEditForm
+                  initial={emptyItemFormValues()}
+                  lockItemCode={false}
+                  onCancel={onClose}
+                  onSaved={(code) => onCreated?.(code)}
+                />
+              ) : (
+                <>
+                  <p className="muted" style={{ marginBottom: '16px' }}>
+                    Upload a sheet with any number of items — codes that already exist in the live
+                    catalog get updated, new codes get added. Nothing changes until you review it and
+                    choose to merge it in.
+                  </p>
+                  <ItemUploadFlow onPublished={onClose} />
+                </>
+              )}
+            </>
           )}
 
           {!creating && error && <p className="empty-copy">{error}</p>}
@@ -376,7 +430,7 @@ export function ItemDrawer({ itemCode, onClose, onCreated }: Props) {
             </>
           )}
         </div>
-      </aside>
+      </motion.aside>
     </>
   );
 }

@@ -86,7 +86,7 @@ button {
   gap: 24px;
   min-height: 58px;
   padding: 8px 20px;
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--header-bg);
   border-bottom: 3px solid var(--sb-red);
   backdrop-filter: blur(8px);
 }
@@ -124,17 +124,19 @@ button {
   gap: 5px;
   padding: 6px 14px;
   border-radius: 999px;
-  border: 1px solid var(--sb-line);
-  background: var(--sb-white);
+  border: 1px solid var(--line);
+  background: var(--surface);
   color: var(--ink);
   font-weight: 600;
   font-size: 14px;
-  transition: color var(--transition-fast), background-color var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+  position: relative;
+  z-index: 1;
+  transition: color var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
 }
 
 .nav-link:hover {
   border-color: var(--accent);
-  background: var(--sb-mist);
+  background: var(--surface-sunken);
 }
 
 .nav-link:active {
@@ -142,18 +144,18 @@ button {
 }
 
 .nav-link.active {
-  color: var(--sb-white);
-  background: var(--accent);
-  border-color: var(--accent);
+  color: var(--bg);
+  background: transparent;
+  border-color: transparent;
 }
 
 .nav-link-catalog:not(.active) {
-  border-color: var(--sb-ink);
+  border-color: var(--ink);
 }
 
 .nav-link-catalog.active {
-  background: var(--sb-ink);
-  border-color: var(--sb-ink);
+  background: transparent;
+  border-color: transparent;
 }
 
 .as-of {
@@ -273,11 +275,11 @@ button {
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: var(--sb-mist);
+  background: var(--surface-sunken);
 }
 
 .btn-secondary:active:not(:disabled) {
-  background: #e2e2e2;
+  background: var(--surface-pressed);
 }
 
 .btn-ghost {
@@ -286,11 +288,11 @@ button {
 }
 
 .btn-ghost:hover:not(:disabled) {
-  background: var(--sb-mist);
+  background: var(--surface-sunken);
 }
 
 .btn-ghost:active:not(:disabled) {
-  background: #e2e2e2;
+  background: var(--surface-pressed);
 }
 
 .btn-block {
@@ -889,7 +891,7 @@ th.num {
 .selection-review {
   max-height: 40vh;
   overflow-y: auto;
-  background: var(--sb-white);
+  background: var(--surface);
   border-top: 1px solid var(--line);
   box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.12);
 }
@@ -954,7 +956,7 @@ th.num {
   letter-spacing: 0.04em;
   color: var(--muted);
   font-weight: 600;
-  background: var(--sb-off-white);
+  background: var(--bg);
   /* A branded edge instead of the same flat grey rule every other cell
      uses — the table header is the one place in a dense data table that
      can carry a little identity without hurting scanability. Higher
@@ -1022,7 +1024,7 @@ tr.clickable:active {
 
 mark.search-hl {
   background: #f6e7a1;
-  color: inherit;
+  color: var(--sb-ink);
   padding: 0.12em 0.35em;
   margin: 0 0.05em;
   border-radius: 3px;
@@ -1053,7 +1055,7 @@ mark.search-hl {
   line-height: 1.45;
   padding: 4px 10px;
   border-radius: 4px;
-  background: #fff5f5;
+  background: var(--accent-tint-bg);
   border: 1px solid var(--sb-red-soft);
   max-width: 100%;
   box-decoration-break: clone;
@@ -1075,7 +1077,7 @@ mark.search-hl {
 
 .meta-grid .meta-key {
   border: 2px solid var(--accent);
-  background: #fff5f5;
+  background: var(--accent-tint-bg);
   padding: 10px 12px;
   border-radius: var(--radius);
 }
@@ -1306,6 +1308,16 @@ mark.search-hl {
   border-top: 1px solid var(--line);
 }
 
+.item-create-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.item-create-tabs .btn {
+  flex: 1;
+}
+
 .lines-table tfoot th {
   font-weight: 700;
 }
@@ -1348,7 +1360,7 @@ mark.search-hl {
 
 .dropzone.dragover {
   border-color: var(--accent);
-  background: #fff5f5;
+  background: var(--accent-tint-bg);
 }
 
 .dropzone input[type='file'] {
@@ -1428,7 +1440,7 @@ mark.search-hl {
 }
 
 .raw-json {
-  background: var(--sb-mist);
+  background: var(--surface-sunken);
   padding: 8px;
   font-size: 11px;
   overflow: auto;
@@ -1868,7 +1880,7 @@ mark.search-hl {
 
 .howto-pip.is-active {
   width: 28px;
-  background: var(--sb-white);
+  background: var(--surface);
   border-color: var(--sb-white);
 }
 
