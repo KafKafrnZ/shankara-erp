@@ -196,6 +196,37 @@ describe('ItemMasterController (e2e)', () => {
       .expect(201);
     expect(extraMismatchRes.body.hits.length).toBe(0);
 
+    // export-filtered exports everything matching a filter, not just rows
+    // hand-checked into the selection tray — the point of it is that a
+    // steward never has to touch the 200-item selection cap to get a whole
+    // category out. Same q as the search assertions above, so it should
+    // return the same matching rows as an actual .xlsx download.
+    const exportFilteredRes = await request(app.getHttpServer())
+      .post('/api/item-search/export-filtered')
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .send({ q: 'TEST_ITEM_NAME' })
+      .expect(201); // Post returns 201 by default; matches the sibling /export endpoint.
+    expect(exportFilteredRes.headers['content-type']).toBe(
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    expect(exportFilteredRes.headers['x-export-truncated']).toBe('false');
+    // searchRes above already asserted its own hits.length > 0, so this
+    // also confirms the export actually contains rows, not just a header
+    // that happens to match an empty search.
+    expect(Number(exportFilteredRes.headers['x-export-row-count'])).toBe(
+      searchRes.body.hits.length,
+    );
+
+    // A filter that matches nothing still returns a valid (empty) workbook,
+    // not an error — an empty result is a normal outcome of a filter, not a
+    // failure.
+    const exportFilteredEmptyRes = await request(app.getHttpServer())
+      .post('/api/item-search/export-filtered')
+      .set('Authorization', `Bearer ${stewardToken}`)
+      .send({ q: 'NO_SUCH_ITEM_EXISTS_ANYWHERE' })
+      .expect(201);
+    expect(exportFilteredEmptyRes.headers['x-export-row-count']).toBe('0');
+
     const liveSources = await request(app.getHttpServer())
       .get('/api/meta/live-sources')
       .set('Authorization', `Bearer ${stewardToken}`)

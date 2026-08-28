@@ -76,3 +76,47 @@ export async function exportToExcel(itemCodes: string[], filename = 'catalog-exp
   a.remove();
   URL.revokeObjectURL(url);
 }
+
+export type FilterExportQuery = {
+  q?: string;
+  mainGroup?: string;
+  subGroup?: string;
+  brand?: string;
+  extra?: Record<string, string>;
+};
+
+/** Downloads everything matching the current search/filter, not just what's
+ *  been hand-checked into the selection tray — for "export this whole
+ *  brand/category" without ticking a box per row. `truncated` tells the
+ *  caller whether the server's safety cap actually cut the file short, so
+ *  the UI can say so honestly instead of quietly handing back a partial
+ *  download. */
+export async function exportFilteredToExcel(
+  query: FilterExportQuery,
+  filename: string,
+): Promise<{ truncated: boolean; rowCount: number }> {
+  const token = sessionStorage.getItem(TOKEN_KEY);
+  const res = await fetch('/api/item-search/export-filtered', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(query),
+  });
+  if (!res.ok) {
+    throw new Error('Export failed');
+  }
+  const truncated = res.headers.get('X-Export-Truncated') === 'true';
+  const rowCount = Number(res.headers.get('X-Export-Row-Count') ?? 0);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  return { truncated, rowCount };
+}

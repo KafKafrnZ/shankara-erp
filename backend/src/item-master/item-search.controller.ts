@@ -76,4 +76,36 @@ export class ItemSearchController {
     await workbook.xlsx.write(res);
     res.end();
   }
+
+  // Everything matching the current search/filter, not just what's been
+  // hand-checked into the selection tray — "export this whole brand" without
+  // ticking a box per row. Reports whether MAX_FILTERED_EXPORT truncated the
+  // result via a response header, since a truncated .xlsx otherwise looks
+  // identical to a complete one once it's downloaded.
+  @Post('export-filtered')
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async exportFiltered(@Body() query: ItemSearchDto, @Res() res: Response) {
+    const { rows, truncated } =
+      await this.searchService.getFilteredRowsForExport({
+        q: query.q,
+        mainGroup: query.mainGroup,
+        subGroup: query.subGroup,
+        brand: query.brand,
+        extra: query.extra,
+      });
+    const workbook = this.searchService.buildExportWorkbook(rows);
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="catalog-export.xlsx"',
+    );
+    res.setHeader('X-Export-Truncated', truncated ? 'true' : 'false');
+    res.setHeader('X-Export-Row-Count', String(rows.length));
+    res.setHeader('Access-Control-Expose-Headers', 'X-Export-Truncated, X-Export-Row-Count');
+    await workbook.xlsx.write(res);
+    res.end();
+  }
 }

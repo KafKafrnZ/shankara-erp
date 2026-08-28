@@ -6,6 +6,7 @@ import { ItemDrawer } from '../components/ItemDrawer.tsx';
 import { LiveSourcePane } from '../components/LiveSourcePane.tsx';
 import { FilterBar } from '../components/FilterBar.tsx';
 import { SelectionTray } from '../components/SelectionTray.tsx';
+import { exportFilteredToExcel } from '../lib/excel-export.ts';
 import { itemPrimaryKey } from '../lib/item-key.ts';
 import { useAuth } from '../auth/useAuth.ts';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
@@ -129,6 +130,9 @@ export function CatalogPage() {
   // Keyed by item code, valued by name — the review list in the tray needs
   // something more readable than a bare code to show what was picked.
   const [selected, setSelected] = useState<Map<string, string>>(new Map());
+
+  const [exportingAll, setExportingAll] = useState(false);
+  const [exportAllNotice, setExportAllNotice] = useState('');
 
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -285,6 +289,33 @@ export function CatalogPage() {
 
   const onRowKey = (e: ReactKeyboardEvent, code: string) => {
     if (e.key === 'Enter') openItem(code);
+  };
+
+  // A stale "showing the first 20,000 of..." notice from a previous filter
+  // would otherwise linger and misdescribe the new result set.
+  useEffect(() => {
+    setExportAllNotice('');
+  }, [q, mainGroup, subGroup, brand, extraFilterKey]);
+
+  const onExportAll = async () => {
+    setExportingAll(true);
+    setExportAllNotice('');
+    try {
+      const filenameBits = [mainGroup, subGroup, brand].filter(Boolean).join('-') || 'search';
+      const { truncated, rowCount } = await exportFilteredToExcel(
+        { q: q || undefined, mainGroup: mainGroup || undefined, subGroup: subGroup || undefined, brand: brand || undefined, extra: Object.keys(committedExtra).length > 0 ? committedExtra : undefined },
+        `catalog-export-${filenameBits}.xlsx`,
+      );
+      setExportAllNotice(
+        truncated
+          ? `Downloaded the first ${rowCount.toLocaleString('en-IN')} matching items — narrow the filters to get the rest.`
+          : `Downloaded all ${rowCount.toLocaleString('en-IN')} matching items.`,
+      );
+    } catch {
+      setExportAllNotice("Couldn't export — try again.");
+    } finally {
+      setExportingAll(false);
+    }
   };
 
   const toggleSelect = (code: string, name: string) => {
@@ -525,6 +556,17 @@ export function CatalogPage() {
                       : `${fromRow}–${toRow}`}
                   </span>
                   <div className="pager-btns">
+                    {total > PAGE_SIZE && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        disabled={exportingAll}
+                        onClick={() => void onExportAll()}
+                        title="Export every item matching the current search and filters, not just this page"
+                      >
+                        {exportingAll ? 'Exporting…' : `Export all ${total.toLocaleString('en-IN')} matching`}
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="btn btn-secondary"
@@ -543,6 +585,9 @@ export function CatalogPage() {
                     </button>
                   </div>
                 </div>
+                {exportAllNotice && (
+                  <p className="muted export-all-notice" role="status">{exportAllNotice}</p>
+                )}
               </>
             )}
           </section>

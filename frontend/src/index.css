@@ -1115,6 +1115,11 @@ mark.search-hl {
   min-width: 108px;
 }
 
+.export-all-notice {
+  margin-top: -4px;
+  text-align: right;
+}
+
 .results-table.is-loading {
   opacity: 0.55;
 }

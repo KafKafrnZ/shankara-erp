@@ -37,6 +37,10 @@ function escapeLike(value: string): string {
 // clause out of arbitrary jsonb keys.
 const MAX_EXTRA_FILTERS = 5;
 
+// Safety net on "export everything matching this filter," not a usability
+// limit — see getFilteredRowsForExport().
+const MAX_FILTERED_EXPORT = 20_000;
+
 @Injectable()
 export class ItemSearchService {
   private facetsCache: {
@@ -75,14 +79,17 @@ export class ItemSearchService {
       .andWhere("batch.status = 'published'");
   }
 
-  async search(query: {
+  /** Same filter semantics search() and the filtered export both need:
+   *  built once here so a filter change (a new field, a matching-rule
+   *  tweak) can't drift between "search this" and "export everything
+   *  matching this" — the two need to always agree on what "matching"
+   *  means. */
+  private buildFilterQuery(query: {
     q?: string;
     mainGroup?: string;
     subGroup?: string;
     brand?: string;
     extra?: Record<string, string>;
-    limit?: number;
-    offset?: number;
   }) {
     const qb = this.visibleRows();
 
@@ -143,7 +150,19 @@ export class ItemSearchService {
       });
     }
 
-    qb.orderBy('row.item_code', 'ASC');
+    return qb.orderBy('row.item_code', 'ASC');
+  }
+
+  async search(query: {
+    q?: string;
+    mainGroup?: string;
+    subGroup?: string;
+    brand?: string;
+    extra?: Record<string, string>;
+    limit?: number;
+    offset?: number;
+  }) {
+    const qb = this.buildFilterQuery(query);
 
     const limit = query.limit || 50;
     const offset = query.offset || 0;
@@ -301,6 +320,43 @@ export class ItemSearchService {
       .andWhere('row.item_code = ANY(:codes)', { codes })
       .orderBy('row.item_code', 'ASC')
       .getMany();
+  }
+
+  /** Everything matching the current search/filter — not what's checked in
+   *  the selection tray. The tray's 200-code cap is a reasonable limit on
+   *  hand-picking rows one at a time; it was never meant to be the ceiling
+   *  on "export this whole brand/category," which can be thousands of rows
+   *  a steward never has to individually check. Capped at MAX_FILTERED_EXPORT
+   *  rows as a memory/response-size safety net, not a usability limit —
+   *  large enough that no real category on this catalog should ever hit it
+   *  (the biggest single upload ingested was ~174k rows across the *whole*
+   *  catalog, not one category). truncated tells the caller whether the
+   *  cap actually bit, so the UI can say so honestly instead of silently
+   *  handing back a partial file. */
+  async getFilteredRowsForExport(query: {
+    q?: string;
+    mainGroup?: string;
+    subGroup?: string;
+    brand?: string;
+    extra?: Record<string, string>;
+  }) {
+    const qb = this.buildFilterQuery(query);
+    const [rows, fields] = await Promise.all([
+      qb.clone().take(MAX_FILTERED_EXPORT + 1).getMany(),
+      this.getAvailableExtraFields(),
+    ]);
+    const truncated = rows.length > MAX_FILTERED_EXPORT;
+    const limited = truncated ? rows.slice(0, MAX_FILTERED_EXPORT) : rows;
+    const allKeys = fields.map((f) => f.key);
+    return {
+      truncated,
+      rows: limited.map((row) => ({
+        ...row,
+        extra: Object.fromEntries(
+          allKeys.map((key) => [key, row.extra?.[key] ?? '']),
+        ),
+      })),
+    };
   }
 
   /** Same rows as getCurrentRows(), but with every row's `extra` padded out
