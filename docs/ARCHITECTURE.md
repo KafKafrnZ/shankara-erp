@@ -146,7 +146,12 @@ purposes depends on which layout produced the row — see
 
 ## 4. Catalog upload → publish pipeline
 
-1. **Upload** (`POST /api/item-uploads`, steward only) — the file is
+1. **Upload** (`POST /api/item-uploads`, steward only) — rejected before
+   anything is stored or queued unless the filename ends `.xlsx` **and**
+   the file's first bytes are a real ZIP local file header
+   (`backend/src/common/is-xlsx.ts` — `.xlsx` is a ZIP archive), so a
+   renamed/malformed file gets the same plain-language 400 either way
+   instead of failing deep inside the parser. Once it passes, the file is
    hashed, stored in the object store, and a batch row is created with
    status `processing`. A `pg-boss` job (`item-master-parse`) is enqueued
    and the request returns immediately (`202`).
@@ -282,9 +287,23 @@ use, rather than a parallel "just UPDATE the row" path:
 
 ## 8. Auth, roles, and audit
 
-- **JWT** issued on `POST /api/auth/login`, stored in the frontend's
-  `sessionStorage` (not a cookie). `JWT_EXPIRES_IN` defaults to `8h`,
-  no refresh-token flow — after that, re-login.
+- **JWT** issued on `POST /api/auth/login`. The browser SPA authenticates
+  via an `httpOnly`, `SameSite=Strict`, `Secure`-in-production cookie
+  (`sb_token`, set by `AuthController.login`/cleared by `.logout`) — the
+  frontend never stores or reads the token itself
+  (`frontend/src/lib/api.ts` sends `credentials: 'same-origin'`, nothing
+  more), so an XSS anywhere in the app can no longer read it out of
+  `sessionStorage`/`localStorage`. `SameSite=Strict` is the CSRF defense;
+  no separate CSRF token, since every legitimate request is same-origin
+  (Vite's dev proxy, Caddy in production — there's no real cross-site
+  case `Strict` would need `Lax`'s exception for). The login response
+  body still carries `accessToken` too, and `JwtStrategy` still accepts a
+  `Bearer` header as an alternative — kept for non-browser callers
+  (scripts, the e2e suite) that hold and send a token explicitly; that
+  path has no CSRF exposure since nothing attaches it automatically.
+  `JWT_EXPIRES_IN` defaults to `8h` (the cookie's `Max-Age` is derived
+  from the signed token's own `exp`, so the two can't drift), no
+  refresh-token flow — after that, re-login.
 - `tokenVersion` on `app_user` — bumping it (not currently exposed in any
   UI) would invalidate every existing token for that user; the JWT payload
   carries the version it was issued with and the guard checks it matches.
@@ -367,12 +386,6 @@ degrades by queueing, not by crashing; throughput ceiling ~85-95 req/s on
 the machine this was tested on, which also runs everything else at once).
 
 **Security**
-- JWT in `sessionStorage`, not an httpOnly cookie — an XSS anywhere becomes
-  token theft. Low risk today (no `dangerouslySetInnerHTML` anywhere), but
-  a real trade-off, not a non-issue.
-- File upload validation is extension-only (`.xlsx` in the filename), not
-  content-sniffed. A malformed/oversized workbook only fails deep inside
-  the parser, not at the door.
 - Rate limiting is per-IP. Behind a shared office NAT or a reverse proxy
   without `TRUST_PROXY` set correctly, that's a shared bucket for
   everyone behind it, not a per-person one. (`TRUST_PROXY` is documented

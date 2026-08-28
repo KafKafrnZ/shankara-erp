@@ -1,8 +1,6 @@
 import type { LiveSources, User } from './types.ts';
 import { pushDevLog } from './devlog.ts';
 
-export const TOKEN_KEY = 'sb.accessToken';
-
 export class ApiError extends Error {
   readonly status: number;
   readonly payload: unknown;
@@ -36,8 +34,6 @@ function nestMessage(body: unknown): string {
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
-  const token = sessionStorage.getItem(TOKEN_KEY);
-  if (token) headers.set('Authorization', `Bearer ${token}`);
   if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
@@ -47,7 +43,12 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   let res: Response;
   try {
-    res = await fetch(path, { ...init, headers });
+    // Auth rides an httpOnly cookie (see AuthController.login), not a
+    // header this code sets — 'same-origin' just makes explicit what
+    // fetch already defaults to: send it for same-origin requests (the
+    // only kind this app makes, via the Vite dev proxy or Caddy in
+    // production), never cross-origin.
+    res = await fetch(path, { ...init, headers, credentials: 'same-origin' });
   } catch {
     pushDevLog({ method, path, status: null, ok: false, ms: Math.round(performance.now() - startedAt), at: Date.now() });
     throw new ApiError(0, `Can't reach the server right now. Check your connection and try again, or ${CONTACT_HINT} if this keeps happening.`);
@@ -67,7 +68,9 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (res.status === 401) {
     const isLogin = path === '/api/auth/login';
     if (!isLogin) {
-      sessionStorage.removeItem(TOKEN_KEY);
+      // No client-side token to clear — the cookie is httpOnly and
+      // whatever made this 401 (expired/missing/revoked) already means
+      // the server no longer honors it either way.
       if (window.location.pathname !== '/login') {
         const next = `${window.location.pathname}${window.location.search}`;
         const safe = next.startsWith('/') && !next.startsWith('//')
@@ -106,7 +109,10 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export function login(email: string, password: string) {
-  return api<{ accessToken: string; user: User }>(
+  // The response also carries accessToken (kept for non-browser callers —
+  // see AuthController.login) but this app authenticates via the cookie
+  // the same response sets, not by reading it out of the JSON body.
+  return api<{ user: User }>(
     '/api/auth/login',
     { method: 'POST', body: JSON.stringify({ email, password }) },
   );

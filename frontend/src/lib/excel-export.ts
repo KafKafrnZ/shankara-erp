@@ -1,5 +1,3 @@
-import { TOKEN_KEY } from './api.ts';
-
 export interface ExportableRow {
   itemCode: string;
   itemName: string;
@@ -54,12 +52,11 @@ export function buildExcelPasteText(rows: ExportableRow[]): string {
 /** Downloads a real .xlsx built server-side (same column set as
  *  buildExcelPasteText) for the given item codes. */
 export async function exportToExcel(itemCodes: string[], filename = 'catalog-export.xlsx'): Promise<void> {
-  const token = sessionStorage.getItem(TOKEN_KEY);
   const res = await fetch('/api/item-search/export', {
     method: 'POST',
+    credentials: 'same-origin',
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({ itemCodes }),
   });
@@ -95,12 +92,11 @@ export async function exportFilteredToExcel(
   query: FilterExportQuery,
   filename: string,
 ): Promise<{ truncated: boolean; rowCount: number }> {
-  const token = sessionStorage.getItem(TOKEN_KEY);
   const res = await fetch('/api/item-search/export-filtered', {
     method: 'POST',
+    credentials: 'same-origin',
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify(query),
   });

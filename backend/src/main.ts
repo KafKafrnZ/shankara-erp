@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -11,6 +12,10 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api');
   app.use(helmet());
+  // Unsigned: the JWT itself is what's being trusted (verified by
+  // JwtStrategy), not the cookie wrapper — signing the cookie too would
+  // just be a second secret to manage for no added protection.
+  app.use(cookieParser());
 
   if (configService.get<boolean>('TRUST_PROXY')) {
     app.getHttpAdapter().getInstance().set('trust proxy', 1);

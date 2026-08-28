@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { fetchAsOf, fetchMe, login as loginApi, logout as logoutApi, TOKEN_KEY } from '../lib/api.ts';
+import { fetchAsOf, fetchMe, login as loginApi, logout as logoutApi } from '../lib/api.ts';
 import { clearHowToDismissed } from '../lib/howto.ts';
 import type { User } from '../lib/types.ts';
 import { AuthContext } from './context.ts';
@@ -22,11 +22,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const token = sessionStorage.getItem(TOKEN_KEY);
-      if (!token) {
-        if (!cancelled) setLoading(false);
-        return;
-      }
+      // No local flag says whether a cookie exists — it's httpOnly on
+      // purpose (see AuthController.login), so this just asks the server
+      // and treats a 401 the same as "not logged in."
       try {
         const me = await fetchMe();
         if (cancelled) return;
@@ -48,8 +46,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    const res = await loginApi(email, password);
-    sessionStorage.setItem(TOKEN_KEY, res.accessToken);
+    // loginApi's response already set the auth cookie — nothing for this
+    // code to store.
+    await loginApi(email, password);
     const me = await fetchMe();
     setUser(me);
     await refreshAsOf();
@@ -59,9 +58,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await logoutApi();
     } catch {
-      /* still clear locally */
+      /* logoutApi clears the cookie server-side; a failed request here
+       * just means the client didn't get to see that happen — still
+       * safe to clear local state either way. */
     }
-    sessionStorage.removeItem(TOKEN_KEY);
     clearHowToDismissed();
     setUser(null);
     setAsOf(null);

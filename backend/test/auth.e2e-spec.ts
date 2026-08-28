@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
+import cookieParser from 'cookie-parser';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
 
@@ -20,6 +21,7 @@ describe('Auth (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api');
+    app.use(cookieParser());
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,
@@ -144,5 +146,69 @@ describe('Auth (e2e)', () => {
       .attach('file', fixturePath);
 
     expect([200, 202]).toContain(res.status);
+  });
+
+  // Grouped at the end of the file, deliberately: the logout test below
+  // bumps the steward's token_version server-side, which invalidates
+  // every steward token issued earlier in this run — including the
+  // outer-scope `stewardToken` every test above depends on. Placed
+  // anywhere else, it would silently break later tests' auth.
+  it('login sets an httpOnly, SameSite=Strict, Path=/ cookie carrying the same token as the body', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ email: 'steward@shankara.local', password: stewardPassword })
+      .expect(200);
+
+    const setCookie = res.headers['set-cookie'];
+    expect(setCookie).toBeDefined();
+    const cookie = (Array.isArray(setCookie) ? setCookie : [setCookie]).find(
+      (c: string) => c.startsWith('sb_token='),
+    );
+    expect(cookie).toBeDefined();
+    expect(cookie).toContain('HttpOnly');
+    expect(cookie).toContain('SameSite=Strict');
+    expect(cookie).toContain('Path=/');
+    // Dev runs over plain HTTP (127.0.0.1) — Secure would make the browser
+    // silently drop the cookie there, so it must be absent outside prod.
+    expect(cookie).not.toContain('Secure');
+    expect(cookie).toContain(encodeURIComponent(res.body.accessToken).slice(0, 20));
+  });
+
+  it('a protected route is reachable via the cookie alone, no Authorization header', async () => {
+    const agent = request.agent(app.getHttpServer());
+    await agent
+      .post('/api/auth/login')
+      .send({ email: 'steward@shankara.local', password: stewardPassword })
+      .expect(200);
+
+    // supertest's agent persists Set-Cookie from the login response and
+    // resends it automatically — no header set here at all.
+    const res = await agent.get('/api/auth/me').expect(200);
+    expect(res.body.email).toBe('steward@shankara.local');
+  });
+
+  it('logout clears the cookie, and the cleared cookie no longer authenticates', async () => {
+    const agent = request.agent(app.getHttpServer());
+    await agent
+      .post('/api/auth/login')
+      .send({ email: 'steward@shankara.local', password: stewardPassword })
+      .expect(200);
+    await agent.get('/api/auth/me').expect(200);
+
+    const logoutRes = await agent.post('/api/auth/logout').expect(200);
+    const setCookie = logoutRes.headers['set-cookie'];
+    const cleared = (Array.isArray(setCookie) ? setCookie : [setCookie]).find(
+      (c: string) => c.startsWith('sb_token='),
+    );
+    expect(cleared).toBeDefined();
+    // Express's clearCookie sends an already-expired cookie rather than
+    // omitting it — that's what actually makes the browser delete it.
+    expect(cleared).toMatch(/sb_token=;/);
+
+    // logout() also bumps token_version server-side, so even a copy of
+    // the old cookie value made before it expired would be rejected —
+    // belt and suspenders, not just relying on the browser having
+    // discarded it.
+    await agent.get('/api/auth/me').expect(401);
   });
 });
