@@ -34,25 +34,33 @@ describe('ItemMasterController (e2e)', () => {
 
     const loginSteward = await request(app.getHttpServer())
       .post('/api/auth/login')
-      .send({ email: 'steward@shankara.local', password: process.env.SEED_STEWARD_PASSWORD });
+      .send({
+        email: 'steward@shankara.local',
+        password: process.env.SEED_STEWARD_PASSWORD,
+      });
     stewardToken = loginSteward.body.accessToken;
 
     const loginFinance = await request(app.getHttpServer())
       .post('/api/auth/login')
-      .send({ email: 'finance@shankara.local', password: process.env.SEED_FINANCE_PASSWORD });
+      .send({
+        email: 'finance@shankara.local',
+        password: process.env.SEED_FINANCE_PASSWORD,
+      });
     financeToken = loginFinance.body.accessToken;
   });
 
   afterAll(async () => {
     for (const f of tempFiles) {
-      try { fs.unlinkSync(f); } catch {}
+      try {
+        fs.unlinkSync(f);
+      } catch {}
     }
     await app.close();
     await db.end();
   });
 
   const generateUniqueExcel = (originalPath: string) => {
-    // We just copy the fixture but wait, Excel is binary. 
+    // We just copy the fixture but wait, Excel is binary.
     // We can't just string-replace easily.
     // Instead we will rely on file content and metadata changes, or just test it once.
     // To ensure unique SHA, we can append a random byte.
@@ -66,7 +74,9 @@ describe('ItemMasterController (e2e)', () => {
   };
 
   it('item master upload and search lifecycle', async () => {
-    const { tmp: xlsxPath } = generateUniqueExcel(path.join(__dirname, '../fixtures/item-master/test-fixture-1.xlsx'));
+    const { tmp: xlsxPath } = generateUniqueExcel(
+      path.join(__dirname, '../fixtures/item-master/test-fixture-1.xlsx'),
+    );
 
     // Non-steward gets 403
     await request(app.getHttpServer())
@@ -89,7 +99,7 @@ describe('ItemMasterController (e2e)', () => {
     let batchStatus = 'processing';
     let pollCount = 0;
     while (batchStatus === 'processing' && pollCount < 30) {
-      await new Promise(r => setTimeout(r, 1000));
+      await new Promise((r) => setTimeout(r, 1000));
       const bRes = await request(app.getHttpServer())
         .get(`/api/item-batches/${batchId}`)
         .set('Authorization', `Bearer ${stewardToken}`);
@@ -109,15 +119,27 @@ describe('ItemMasterController (e2e)', () => {
       .get('/api/meta/live-sources')
       .set('Authorization', `Bearer ${stewardToken}`)
       .expect(200);
-    expect(heldSources.body.items.pending.some((f: { originalName: string }) => f.originalName === originalName)).toBe(true);
-    expect(heldSources.body.items.live.some((f: { originalName: string }) => f.originalName === originalName)).toBe(false);
+    expect(
+      heldSources.body.items.pending.some(
+        (f: { originalName: string }) => f.originalName === originalName,
+      ),
+    ).toBe(true);
+    expect(
+      heldSources.body.items.live.some(
+        (f: { originalName: string }) => f.originalName === originalName,
+      ),
+    ).toBe(false);
 
     const financeHeldSources = await request(app.getHttpServer())
       .get('/api/meta/live-sources')
       .set('Authorization', `Bearer ${financeToken}`)
       .expect(200);
     expect(financeHeldSources.body.items.pending).toEqual([]);
-    expect(financeHeldSources.body.items.live.some((f: { originalName: string }) => f.originalName === originalName)).toBe(false);
+    expect(
+      financeHeldSources.body.items.live.some(
+        (f: { originalName: string }) => f.originalName === originalName,
+      ),
+    ).toBe(false);
 
     // finance/branch calling GET on held batch gets 404
     await request(app.getHttpServer())
@@ -147,14 +169,18 @@ describe('ItemMasterController (e2e)', () => {
       .get('/api/item-search/fields')
       .set('Authorization', `Bearer ${stewardToken}`)
       .expect(200);
-    expect(fieldsRes.body.some((f: { key: string }) => f.key === 'SI No.')).toBe(true);
+    expect(
+      fieldsRes.body.some((f: { key: string }) => f.key === 'SI No.'),
+    ).toBe(true);
 
     const extraFacetRes = await request(app.getHttpServer())
       .get('/api/item-search/facets/extra')
       .query({ field: 'SI No.' })
       .set('Authorization', `Bearer ${stewardToken}`)
       .expect(200);
-    expect(extraFacetRes.body.some((f: { value: string }) => f.value === '1')).toBe(true);
+    expect(
+      extraFacetRes.body.some((f: { value: string }) => f.value === '1'),
+    ).toBe(true);
 
     const extraFilteredRes = await request(app.getHttpServer())
       .post('/api/item-search')
@@ -178,25 +204,39 @@ describe('ItemMasterController (e2e)', () => {
     // already-published catalog in this scratch DB, so this batch may
     // insert zero new live rows. The pane lists files that actually
     // contribute to search, not empty published shells.
-    expect(liveSources.body.items.pending.some((f: { originalName: string }) => f.originalName === originalName)).toBe(false);
+    expect(
+      liveSources.body.items.pending.some(
+        (f: { originalName: string }) => f.originalName === originalName,
+      ),
+    ).toBe(false);
     const liveRowCount = await db.query(
       `SELECT count(*)::int AS n FROM item_master_row WHERE batch_id = $1 AND valid_to IS NULL AND is_deleted = false`,
       [batchId],
     );
     const n = liveRowCount.rows[0].n;
     if (n > 0) {
-      const liveFile = liveSources.body.items.live.find((f: { originalName: string }) => f.originalName === originalName);
+      const liveFile = liveSources.body.items.live.find(
+        (f: { originalName: string }) => f.originalName === originalName,
+      );
       expect(liveFile).toBeTruthy();
       expect(liveFile.liveRows).toBe(n);
     } else {
-      expect(liveSources.body.items.live.some((f: { liveRows: number }) => f.liveRows > 0)).toBe(true);
+      expect(
+        liveSources.body.items.live.some(
+          (f: { liveRows: number }) => f.liveRows > 0,
+        ),
+      ).toBe(true);
     }
 
     const financeLive = await request(app.getHttpServer())
       .get('/api/meta/live-sources')
       .set('Authorization', `Bearer ${financeToken}`)
       .expect(200);
-    expect(financeLive.body.items.live.some((f: { liveRows: number }) => f.liveRows > 0)).toBe(true);
+    expect(
+      financeLive.body.items.live.some(
+        (f: { liveRows: number }) => f.liveRows > 0,
+      ),
+    ).toBe(true);
     expect(financeLive.body.items.pending).toEqual([]);
 
     // Duplicate upload
@@ -223,12 +263,16 @@ describe('ItemMasterController (e2e)', () => {
       .expect(200);
     expect(page1.body.items).toHaveLength(2);
     expect(page2.body.items.length).toBeGreaterThan(0);
-    expect(page1.body.items[0].sourceRowNo).not.toBe(page2.body.items[0].sourceRowNo);
+    expect(page1.body.items[0].sourceRowNo).not.toBe(
+      page2.body.items[0].sourceRowNo,
+    );
     expect(page1.body.total).toBeGreaterThanOrEqual(3);
   }, 40000); // Allow up to 40s
 
   it('a batch stuck in processing can be recovered', async () => {
-    const { tmp: xlsxPath } = generateUniqueExcel(path.join(__dirname, '../fixtures/item-master/test-fixture-1.xlsx'));
+    const { tmp: xlsxPath } = generateUniqueExcel(
+      path.join(__dirname, '../fixtures/item-master/test-fixture-1.xlsx'),
+    );
 
     const res = await request(app.getHttpServer())
       .post('/api/item-uploads')
@@ -243,7 +287,7 @@ describe('ItemMasterController (e2e)', () => {
     let batchStatus = 'processing';
     let pollCount = 0;
     while (batchStatus === 'processing' && pollCount < 30) {
-      await new Promise(r => setTimeout(r, 1000));
+      await new Promise((r) => setTimeout(r, 1000));
       const bRes = await request(app.getHttpServer())
         .get(`/api/item-batches/${batchId}`)
         .set('Authorization', `Bearer ${stewardToken}`);
@@ -252,7 +296,10 @@ describe('ItemMasterController (e2e)', () => {
     }
     expect(batchStatus).toBe('held');
 
-    await db.query(`UPDATE item_master_batch SET status = 'processing' WHERE id = $1`, [batchId]);
+    await db.query(
+      `UPDATE item_master_batch SET status = 'processing' WHERE id = $1`,
+      [batchId],
+    );
 
     // Non-steward can't retry
     await request(app.getHttpServer())
@@ -274,7 +321,7 @@ describe('ItemMasterController (e2e)', () => {
     batchStatus = 'processing';
     pollCount = 0;
     while (batchStatus === 'processing' && pollCount < 30) {
-      await new Promise(r => setTimeout(r, 1000));
+      await new Promise((r) => setTimeout(r, 1000));
       const bRes = await request(app.getHttpServer())
         .get(`/api/item-batches/${batchId}`)
         .set('Authorization', `Bearer ${stewardToken}`);
@@ -304,7 +351,12 @@ describe('ItemMasterController (e2e)', () => {
     const createRes = await request(app.getHttpServer())
       .post('/api/item-master/rows')
       .set('Authorization', `Bearer ${stewardToken}`)
-      .send({ itemCode, itemName: 'Manual Test Item', brand: 'ManualBrand', extra: { 'Test Field': 'A' } })
+      .send({
+        itemCode,
+        itemName: 'Manual Test Item',
+        brand: 'ManualBrand',
+        extra: { 'Test Field': 'A' },
+      })
       .expect(200);
     expect(createRes.body.status).toBe('published');
     expect(createRes.body.isManual).toBe(true);
@@ -314,13 +366,22 @@ describe('ItemMasterController (e2e)', () => {
       .set('Authorization', `Bearer ${stewardToken}`)
       .send({ q: itemCode })
       .expect(201);
-    expect(foundAfterCreate.body.hits.some((h: { itemCode: string }) => h.itemCode === itemCode)).toBe(true);
+    expect(
+      foundAfterCreate.body.hits.some(
+        (h: { itemCode: string }) => h.itemCode === itemCode,
+      ),
+    ).toBe(true);
 
     // Edit — same item code, changed name
     const editRes = await request(app.getHttpServer())
       .post('/api/item-master/rows')
       .set('Authorization', `Bearer ${stewardToken}`)
-      .send({ itemCode, itemName: 'Manual Test Item (edited)', brand: 'ManualBrand', extra: { 'Test Field': 'B' } })
+      .send({
+        itemCode,
+        itemName: 'Manual Test Item (edited)',
+        brand: 'ManualBrand',
+        extra: { 'Test Field': 'B' },
+      })
       .expect(200);
     expect(editRes.body.status).toBe('published');
 
@@ -339,7 +400,10 @@ describe('ItemMasterController (e2e)', () => {
       `SELECT action FROM audit_event WHERE action IN ('item_manual_create', 'item_manual_update') AND meta->>'itemCode' = $1 ORDER BY id ASC`,
       [itemCode],
     );
-    expect(auditRows.rows.map((r: { action: string }) => r.action)).toEqual(['item_manual_create', 'item_manual_update']);
+    expect(auditRows.rows.map((r: { action: string }) => r.action)).toEqual([
+      'item_manual_create',
+      'item_manual_update',
+    ]);
 
     // Non-steward can't delete
     await request(app.getHttpServer())
@@ -358,7 +422,11 @@ describe('ItemMasterController (e2e)', () => {
       .set('Authorization', `Bearer ${stewardToken}`)
       .send({ q: itemCode })
       .expect(201);
-    expect(foundAfterDelete.body.hits.some((h: { itemCode: string }) => h.itemCode === itemCode)).toBe(false);
+    expect(
+      foundAfterDelete.body.hits.some(
+        (h: { itemCode: string }) => h.itemCode === itemCode,
+      ),
+    ).toBe(false);
 
     // The deletion itself still shows in the item's own history
     const historyAfterDelete = await request(app.getHttpServer())

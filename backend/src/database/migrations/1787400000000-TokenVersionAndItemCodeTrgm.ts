@@ -15,6 +15,8 @@ export class TokenVersionAndItemCodeTrgm1787400000000 implements MigrationInterf
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DROP INDEX "IDX_item_master_row_item_code_trgm"`);
-    await queryRunner.query(`ALTER TABLE "app_user" DROP COLUMN "token_version"`);
+    await queryRunner.query(
+      `ALTER TABLE "app_user" DROP COLUMN "token_version"`,
+    );
   }
 }

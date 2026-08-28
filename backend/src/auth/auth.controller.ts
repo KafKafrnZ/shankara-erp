@@ -25,7 +25,11 @@ export class AuthController {
   @Post('logout')
   @HttpCode(200)
   async logout(@Req() req: AuthedRequest) {
-    return this.authService.logout(req.user.id, req.ip, req.headers['user-agent']);
+    return this.authService.logout(
+      req.user.id,
+      req.ip,
+      req.headers['user-agent'],
+    );
   }
 
   @Get('me')

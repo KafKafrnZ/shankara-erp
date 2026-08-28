@@ -7,7 +7,10 @@ import { ItemMasterRow } from './entities/item-master-row.entity';
 // Column order for both the bulk/export endpoints and the Excel workbook —
 // same fixed fields the drawer already shows, in the same order, so the
 // paste and the on-screen card read the same way.
-const EXPORT_FIXED_COLUMNS: Array<{ label: string; field: keyof ItemMasterRow }> = [
+const EXPORT_FIXED_COLUMNS: Array<{
+  label: string;
+  field: keyof ItemMasterRow;
+}> = [
   { label: 'Item Code', field: 'itemCode' },
   { label: 'Item Name', field: 'itemName' },
   { label: 'Brand', field: 'brand' },
@@ -36,14 +39,27 @@ const MAX_EXTRA_FILTERS = 5;
 
 @Injectable()
 export class ItemSearchService {
-  private facetsCache: { at: number; value: { mainGroup: { value: string; count: number }[]; subGroup: { value: string; count: number }[]; brand: { value: string; count: number }[] } } | null = null;
-  private extraFieldsCache: { at: number; value: { key: string; count: number }[] } | null = null;
+  private facetsCache: {
+    at: number;
+    value: {
+      mainGroup: { value: string; count: number }[];
+      subGroup: { value: string; count: number }[];
+      brand: { value: string; count: number }[];
+    };
+  } | null = null;
+  private extraFieldsCache: {
+    at: number;
+    value: { key: string; count: number }[];
+  } | null = null;
   // Per-field, unlike the two caches above — the value list for one extra
   // column is cheap to keep separately and there's no fixed set of fields
   // to pre-size a single cache slot for. Found via a stress test: this
   // endpoint was running its jsonb aggregation query on every single call,
   // 3-5x slower than every other facet-style endpoint, which are cached.
-  private extraFacetCache = new Map<string, { at: number; value: { value: string; count: number }[] }>();
+  private extraFacetCache = new Map<
+    string,
+    { at: number; value: { value: string; count: number }[] }
+  >();
 
   constructor(
     @InjectRepository(ItemMasterRow) private rowRepo: Repository<ItemMasterRow>,
@@ -51,14 +67,23 @@ export class ItemSearchService {
 
   /** Only current, non-deleted rows from published batches are ever visible. */
   private visibleRows(alias = 'row') {
-    return this.rowRepo.createQueryBuilder(alias)
+    return this.rowRepo
+      .createQueryBuilder(alias)
       .innerJoin(`${alias}.batch`, 'batch')
       .where(`${alias}.valid_to IS NULL`)
       .andWhere(`${alias}.is_deleted = false`)
       .andWhere("batch.status = 'published'");
   }
 
-  async search(query: { q?: string, mainGroup?: string, subGroup?: string, brand?: string, extra?: Record<string, string>, limit?: number, offset?: number }) {
+  async search(query: {
+    q?: string;
+    mainGroup?: string;
+    subGroup?: string;
+    brand?: string;
+    extra?: Record<string, string>;
+    limit?: number;
+    offset?: number;
+  }) {
     const qb = this.visibleRows();
 
     // Trim before testing for emptiness: values pasted out of Excel or Tally
@@ -75,15 +100,18 @@ export class ItemSearchService {
       // identifier in one file is a secondary field in another. Searching
       // all of them means the same query works regardless of which sheet
       // an item came from.
-      qb.andWhere(new Brackets(sqb => {
-        sqb.where("row.item_code ILIKE :q ESCAPE '\\'", { q: like })
-           .orWhere("row.item_name ILIKE :q ESCAPE '\\'", { q: like })
-           .orWhere("row.catalogue_no ILIKE :q ESCAPE '\\'", { q: like })
-           .orWhere("row.brand ILIKE :q ESCAPE '\\'", { q: like })
-           .orWhere("row.alias ILIKE :q ESCAPE '\\'", { q: like })
-           .orWhere("row.sap_item_code ILIKE :q ESCAPE '\\'", { q: like })
-           .orWhere("row.hsn_description ILIKE :q ESCAPE '\\'", { q: like });
-      }));
+      qb.andWhere(
+        new Brackets((sqb) => {
+          sqb
+            .where("row.item_code ILIKE :q ESCAPE '\\'", { q: like })
+            .orWhere("row.item_name ILIKE :q ESCAPE '\\'", { q: like })
+            .orWhere("row.catalogue_no ILIKE :q ESCAPE '\\'", { q: like })
+            .orWhere("row.brand ILIKE :q ESCAPE '\\'", { q: like })
+            .orWhere("row.alias ILIKE :q ESCAPE '\\'", { q: like })
+            .orWhere("row.sap_item_code ILIKE :q ESCAPE '\\'", { q: like })
+            .orWhere("row.hsn_description ILIKE :q ESCAPE '\\'", { q: like });
+        }),
+      );
     }
 
     const mainGroup = query.mainGroup?.trim();
@@ -108,7 +136,10 @@ export class ItemSearchService {
         .filter(([key, value]) => key && value)
         .slice(0, MAX_EXTRA_FILTERS);
       pairs.forEach(([key, value], i) => {
-        qb.andWhere(`row.extra ->> :extraKey${i} = :extraVal${i}`, { [`extraKey${i}`]: key, [`extraVal${i}`]: value });
+        qb.andWhere(`row.extra ->> :extraKey${i} = :extraVal${i}`, {
+          [`extraKey${i}`]: key,
+          [`extraVal${i}`]: value,
+        });
       });
     }
 
@@ -154,7 +185,10 @@ export class ItemSearchService {
         .groupBy(`row.${column}`)
         .orderBy('count', 'DESC')
         .getRawMany();
-      return rows.map((g) => ({ value: g.value, count: parseInt(g.count, 10) }));
+      return rows.map((g) => ({
+        value: g.value,
+        count: parseInt(g.count, 10),
+      }));
     };
 
     const [mainGroup, subGroup, brand] = await Promise.all([
@@ -173,10 +207,14 @@ export class ItemSearchService {
    *  same way as getFacets(): this scans every live row's jsonb keys, which
    *  is too expensive to redo on every keystroke. */
   async getAvailableExtraFields() {
-    if (this.extraFieldsCache && Date.now() - this.extraFieldsCache.at < 60_000) {
+    if (
+      this.extraFieldsCache &&
+      Date.now() - this.extraFieldsCache.at < 60_000
+    ) {
       return this.extraFieldsCache.value;
     }
-    const rows: Array<{ key: string; count: string }> = await this.rowRepo.manager.query(`
+    const rows: Array<{ key: string; count: string }> = await this.rowRepo
+      .manager.query(`
       SELECT key, COUNT(*)::int AS count
         FROM item_master_row r
         JOIN item_master_batch b ON b.id = r.batch_id
@@ -230,27 +268,34 @@ export class ItemSearchService {
   async getItemHistory(itemCode: string) {
     const code = itemCode?.trim();
     if (!code) return [];
-    return this.rowRepo.createQueryBuilder('row')
-      .innerJoin('row.batch', 'batch')
-      .where('row.item_code = :code', { code })
-      .andWhere("batch.status = 'published'")
-      // is_deleted is NOT filtered here (unlike visibleRows()): a deleted
-      // item's trail — including who removed it and when — should still
-      // show in its own history, it just won't appear in search results.
-      //
-      // valid_to IS NULL (the live/most-recent version) must sort first:
-      // two rows can share a valid_from, and the drawer treats history[0]
-      // as current.
-      .orderBy('CASE WHEN row.valid_to IS NULL THEN 0 ELSE 1 END', 'ASC')
-      .addOrderBy('row.valid_from', 'DESC')
-      .getMany();
+    return (
+      this.rowRepo
+        .createQueryBuilder('row')
+        .innerJoin('row.batch', 'batch')
+        .where('row.item_code = :code', { code })
+        .andWhere("batch.status = 'published'")
+        // is_deleted is NOT filtered here (unlike visibleRows()): a deleted
+        // item's trail — including who removed it and when — should still
+        // show in its own history, it just won't appear in search results.
+        //
+        // valid_to IS NULL (the live/most-recent version) must sort first:
+        // two rows can share a valid_from, and the drawer treats history[0]
+        // as current.
+        .orderBy('CASE WHEN row.valid_to IS NULL THEN 0 ELSE 1 END', 'ASC')
+        .addOrderBy('row.valid_from', 'DESC')
+        .getMany()
+    );
   }
 
   /** Current live rows for a set of item codes — what the selection tray's
    *  "Copy details" and "Export to Excel" both act on (a single-item
    *  export from the drawer is just a one-code call to this). */
   async getCurrentRows(itemCodes: string[]) {
-    const codes = [...new Set(itemCodes.map((c) => c?.trim()).filter((c): c is string => Boolean(c)))].slice(0, 200);
+    const codes = [
+      ...new Set(
+        itemCodes.map((c) => c?.trim()).filter((c): c is string => Boolean(c)),
+      ),
+    ].slice(0, 200);
     if (codes.length === 0) return [];
     return this.visibleRows()
       .andWhere('row.item_code = ANY(:codes)', { codes })
@@ -273,7 +318,9 @@ export class ItemSearchService {
     const allKeys = fields.map((f) => f.key);
     return rows.map((row) => ({
       ...row,
-      extra: Object.fromEntries(allKeys.map((key) => [key, row.extra?.[key] ?? ''])),
+      extra: Object.fromEntries(
+        allKeys.map((key) => [key, row.extra?.[key] ?? '']),
+      ),
     }));
   }
 
@@ -282,19 +329,25 @@ export class ItemSearchService {
    *  known catalog column (not just what these rows happen to have) should
    *  pass rows from getCurrentRowsForExport(), which pre-pads them. */
   buildExportWorkbook(rows: ItemMasterRow[]): ExcelJS.Workbook {
-    const extraKeys = [...new Set(rows.flatMap((r) => Object.keys(r.extra || {})))].sort();
+    const extraKeys = [
+      ...new Set(rows.flatMap((r) => Object.keys(r.extra || {}))),
+    ].sort();
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Items');
     sheet.addRow([...EXPORT_FIXED_COLUMNS.map((c) => c.label), ...extraKeys]);
     for (const row of rows) {
       sheet.addRow([
-        ...EXPORT_FIXED_COLUMNS.map((c) => (row[c.field] as string | null) ?? ''),
+        ...EXPORT_FIXED_COLUMNS.map(
+          (c) => (row[c.field] as string | null) ?? '',
+        ),
         ...extraKeys.map((key) => row.extra?.[key] ?? ''),
       ]);
     }
     sheet.getRow(1).font = { bold: true };
-    sheet.columns.forEach((col) => { col.width = 20; });
+    sheet.columns.forEach((col) => {
+      col.width = 20;
+    });
     return workbook;
   }
 }

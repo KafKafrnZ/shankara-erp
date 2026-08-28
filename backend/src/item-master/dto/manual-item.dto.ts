@@ -1,4 +1,10 @@
-import { IsNotEmpty, IsOptional, IsString, IsObject, Length } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsObject,
+  Length,
+} from 'class-validator';
 
 // Mirrors ParsedItemRow — same required fields the file-upload parsers
 // already enforce (item code + item name), so a manually-entered row can't

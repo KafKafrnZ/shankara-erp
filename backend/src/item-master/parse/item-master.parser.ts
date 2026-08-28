@@ -1,6 +1,10 @@
 import * as ExcelJS from 'exceljs';
 import * as fs from 'fs';
-import { ITEM_LAYOUT_REGISTRY, buildColumnMap, isPlaceholderValue } from '../detect/item-layout.registry';
+import {
+  ITEM_LAYOUT_REGISTRY,
+  buildColumnMap,
+  isPlaceholderValue,
+} from '../detect/item-layout.registry';
 import { ParsedItemRow } from '../detect/item-layout-detector.interface';
 
 // Every column the active layout doesn't already map to a fixed field
@@ -8,7 +12,12 @@ import { ParsedItemRow } from '../detect/item-layout-detector.interface';
 // a real "MAIN MASTER" export can carry ~48 columns and only ~10 have a
 // fixed home. Keyed by the column's own header text (not lowercased) so it
 // reads naturally wherever it's shown.
-function extractExtra(row: any[], headerRow: any[], columnMap: Record<string, number>, knownHeaderKeys: string[]): Record<string, string> {
+function extractExtra(
+  row: any[],
+  headerRow: any[],
+  columnMap: Record<string, number>,
+  knownHeaderKeys: string[],
+): Record<string, string> {
   const known = new Set(knownHeaderKeys);
   const extra: Record<string, string> = {};
   for (const [normalizedHeader, colIndex] of Object.entries(columnMap)) {
@@ -29,22 +38,37 @@ export interface ParseResult {
   totalRows: number;
   acceptedRows: number;
   skippedRows: number;
-  skips: Array<{ sheetName: string; sourceRowNo: number | null; code: string; message: string; raw?: any }>;
-  items: Array<ParsedItemRow & { layoutKey: string; sourceRowNo: number; sheetName: string }>;
+  skips: Array<{
+    sheetName: string;
+    sourceRowNo: number | null;
+    code: string;
+    message: string;
+    raw?: any;
+  }>;
+  items: Array<
+    ParsedItemRow & {
+      layoutKey: string;
+      sourceRowNo: number;
+      sheetName: string;
+    }
+  >;
 }
 
 const unwrapCell = (v: any) => {
   if (v && typeof v === 'object') {
     if ('result' in v) return v.result;
     if ('error' in v) return String(v.error);
-    if ('richText' in v && Array.isArray(v.richText)) return v.richText.map((t: any) => t.text).join('');
+    if ('richText' in v && Array.isArray(v.richText))
+      return v.richText.map((t: any) => t.text).join('');
     if ('text' in v) return v.text;
     if (v instanceof Date) return v.toISOString();
   }
   return v;
 };
 
-export async function parseItemMasterStream(filePath: string): Promise<ParseResult> {
+export async function parseItemMasterStream(
+  filePath: string,
+): Promise<ParseResult> {
   const result: ParseResult = {
     totalSheets: 0,
     recognizedSheets: 0,
@@ -63,20 +87,23 @@ export async function parseItemMasterStream(filePath: string): Promise<ParseResu
 
   for await (const worksheetReader of workbook) {
     result.totalSheets++;
-    const sheetName = (worksheetReader as any).name || `Sheet${result.totalSheets}`;
-    
+    const sheetName =
+      (worksheetReader as any).name || `Sheet${result.totalSheets}`;
+
     let headerRow: any[] | null = null;
-    let detector: typeof ITEM_LAYOUT_REGISTRY[0] | null = null;
+    let detector: (typeof ITEM_LAYOUT_REGISTRY)[0] | null = null;
     let columnMap: Record<string, number> = {};
     let isSkippedSheet = false;
     let rowsScanned = 0;
 
     for await (const row of worksheetReader) {
-      const rowValues = (Array.isArray(row.values) ? row.values.slice(1) : []).map(unwrapCell);
+      const rowValues = (
+        Array.isArray(row.values) ? row.values.slice(1) : []
+      ).map(unwrapCell);
 
       if (!headerRow) {
         rowsScanned++;
-        
+
         // Find matching detector
         for (const det of ITEM_LAYOUT_REGISTRY) {
           if (det.detect(rowValues)) {
@@ -112,7 +139,7 @@ export async function parseItemMasterStream(filePath: string): Promise<ParseResu
 
       // Process data row
       result.totalRows++;
-      
+
       const parsed = detector!.parseRow(rowValues, columnMap);
       if ('skip' in parsed && parsed.skip) {
         result.skippedRows++;
@@ -127,7 +154,12 @@ export async function parseItemMasterStream(filePath: string): Promise<ParseResu
         result.acceptedRows++;
         result.items.push({
           ...(parsed as ParsedItemRow),
-          extra: extractExtra(rowValues, headerRow, columnMap, detector!.knownHeaderKeys),
+          extra: extractExtra(
+            rowValues,
+            headerRow,
+            columnMap,
+            detector!.knownHeaderKeys,
+          ),
           layoutKey: detector!.key,
           sourceRowNo: row.number,
           sheetName,

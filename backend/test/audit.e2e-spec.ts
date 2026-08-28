@@ -16,7 +16,10 @@ describe('Audit (e2e)', () => {
   const tempFiles: string[] = [];
 
   beforeAll(async () => {
-    if (!process.env.SEED_FINANCE_PASSWORD || !process.env.SEED_STEWARD_PASSWORD) {
+    if (
+      !process.env.SEED_FINANCE_PASSWORD ||
+      !process.env.SEED_STEWARD_PASSWORD
+    ) {
       throw new Error('Missing password env vars for e2e tests');
     }
 
@@ -26,7 +29,13 @@ describe('Audit (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api');
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
     await app.init();
     db = app.get(DataSource);
   });
@@ -54,7 +63,10 @@ describe('Audit (e2e)', () => {
     // 1. POST /api/auth/login steward good -> 200
     let res = await request(app.getHttpServer())
       .post('/api/auth/login')
-      .send({ email: 'steward@shankara.local', password: process.env.SEED_STEWARD_PASSWORD })
+      .send({
+        email: 'steward@shankara.local',
+        password: process.env.SEED_STEWARD_PASSWORD,
+      })
       .expect(200);
     stewardToken = res.body.accessToken;
     const stewardId = res.body.user.id;
@@ -64,7 +76,10 @@ describe('Audit (e2e)', () => {
     // rest of this suite's login coverage).
     res = await request(app.getHttpServer())
       .post('/api/auth/login')
-      .send({ email: 'finance@shankara.local', password: process.env.SEED_FINANCE_PASSWORD })
+      .send({
+        email: 'finance@shankara.local',
+        password: process.env.SEED_FINANCE_PASSWORD,
+      })
       .expect(200);
     financeToken = res.body.accessToken;
 
@@ -75,7 +90,9 @@ describe('Audit (e2e)', () => {
       .expect(401);
 
     // 3. Steward upload unique item list -> 202 processing
-    const { tmp: xlsxPath } = generateUniqueExcel(path.join(__dirname, '../fixtures/item-master/test-fixture-1.xlsx'));
+    const { tmp: xlsxPath } = generateUniqueExcel(
+      path.join(__dirname, '../fixtures/item-master/test-fixture-1.xlsx'),
+    );
     const uploadRes = await request(app.getHttpServer())
       .post('/api/item-uploads')
       .set('Authorization', `Bearer ${stewardToken}`)
@@ -125,28 +142,41 @@ describe('Audit (e2e)', () => {
       ORDER BY id DESC LIMIT 20
     `);
 
-    const loginEvent = audits.find((a: any) => a.action === 'login' && a.user_id === stewardId);
+    const loginEvent = audits.find(
+      (a: any) => a.action === 'login' && a.user_id === stewardId,
+    );
     expect(loginEvent).toBeDefined();
     expect(loginEvent.entity_type).toBe('app_user');
 
-    const loginFailedEvent = audits.find((a: any) => a.action === 'login_failed');
+    const loginFailedEvent = audits.find(
+      (a: any) => a.action === 'login_failed',
+    );
     expect(loginFailedEvent).toBeDefined();
     expect(loginFailedEvent.meta.reason).toBe('invalid_password');
     expect(loginFailedEvent.meta.password).toBeUndefined();
 
-    const uploadEvent = audits.find((a: any) => a.action === 'item_upload' && a.entity_id === String(batchId));
+    const uploadEvent = audits.find(
+      (a: any) => a.action === 'item_upload' && a.entity_id === String(batchId),
+    );
     expect(uploadEvent).toBeDefined();
     expect(uploadEvent.entity_type).toBe('item_master_batch');
 
-    const publishEvent = audits.find((a: any) => a.action === 'item_publish' && a.entity_id === String(batchId));
+    const publishEvent = audits.find(
+      (a: any) =>
+        a.action === 'item_publish' && a.entity_id === String(batchId),
+    );
     expect(publishEvent).toBeDefined();
     expect(publishEvent.entity_type).toBe('item_master_batch');
 
-    const holdEvent = audits.find((a: any) => a.action === 'item_hold' && a.entity_id === String(batchId));
+    const holdEvent = audits.find(
+      (a: any) => a.action === 'item_hold' && a.entity_id === String(batchId),
+    );
     expect(holdEvent).toBeDefined();
     expect(holdEvent.entity_type).toBe('item_master_batch');
 
-    const logoutEvent = audits.find((a: any) => a.action === 'logout' && a.user_id === stewardId);
+    const logoutEvent = audits.find(
+      (a: any) => a.action === 'logout' && a.user_id === stewardId,
+    );
     expect(logoutEvent).toBeDefined();
     expect(logoutEvent.entity_type).toBe('app_user');
   });

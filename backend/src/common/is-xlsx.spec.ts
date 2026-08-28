@@ -2,7 +2,9 @@ import { isXlsxSignature } from './is-xlsx';
 
 describe('isXlsxSignature', () => {
   it('accepts a real xlsx (ZIP local file header)', () => {
-    expect(isXlsxSignature(Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0x00]))).toBe(true);
+    expect(
+      isXlsxSignature(Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0x00])),
+    ).toBe(true);
   });
 
   it('rejects a PDF renamed to .xlsx', () => {

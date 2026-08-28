@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, QueryFailedError, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
@@ -51,11 +56,18 @@ export class UsersService {
   }
 
   async list(): Promise<PublicUser[]> {
-    const users = await this.usersRepository.find({ order: { createdAt: 'ASC' } });
+    const users = await this.usersRepository.find({
+      order: { createdAt: 'ASC' },
+    });
     return users.map((u) => this.toPublic(u));
   }
 
-  async create(dto: CreateUserDto, actorId: string, ip?: string, userAgent?: string): Promise<PublicUser> {
+  async create(
+    dto: CreateUserDto,
+    actorId: string,
+    ip?: string,
+    userAgent?: string,
+  ): Promise<PublicUser> {
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
     const user = this.usersRepository.create({
       email: dto.email.trim(),
@@ -69,8 +81,14 @@ export class UsersService {
     try {
       await this.usersRepository.save(user);
     } catch (err) {
-      if (err instanceof QueryFailedError && (err as QueryFailedError & { driverError?: { code?: string } }).driverError?.code === '23505') {
-        throw new ConflictException('A person with that email already has access.');
+      if (
+        err instanceof QueryFailedError &&
+        (err as QueryFailedError & { driverError?: { code?: string } })
+          .driverError?.code === '23505'
+      ) {
+        throw new ConflictException(
+          'A person with that email already has access.',
+        );
       }
       throw err;
     }
@@ -104,7 +122,9 @@ export class UsersService {
       const nextRole = dto.role ?? user.role;
       const nextActive = dto.isActive ?? user.isActive;
       const droppingSteward =
-        user.role === 'steward' && user.isActive && (nextRole !== 'steward' || nextActive === false);
+        user.role === 'steward' &&
+        user.isActive &&
+        (nextRole !== 'steward' || nextActive === false);
       if (droppingSteward) {
         const stewards = await manager
           .createQueryBuilder(AppUser, 'u')
@@ -119,26 +139,35 @@ export class UsersService {
         }
       }
 
-      if (dto.displayName !== undefined) user.displayName = dto.displayName.trim();
+      if (dto.displayName !== undefined)
+        user.displayName = dto.displayName.trim();
       if (dto.role !== undefined) user.role = dto.role;
-      if (dto.companyId !== undefined) user.companyId = dto.companyId?.trim() || null;
-      if (dto.branchId !== undefined) user.branchId = dto.branchId?.trim() || null;
+      if (dto.companyId !== undefined)
+        user.companyId = dto.companyId?.trim() || null;
+      if (dto.branchId !== undefined)
+        user.branchId = dto.branchId?.trim() || null;
       if (dto.isActive !== undefined) user.isActive = dto.isActive;
 
-      if (dto.isActive === false || (dto.role !== undefined && dto.role !== previousRole)) {
+      if (
+        dto.isActive === false ||
+        (dto.role !== undefined && dto.role !== previousRole)
+      ) {
         user.tokenVersion += 1;
       }
 
       await manager.save(user);
-      await this.auditService.log({
-        userId: actorId,
-        action: 'user_update',
-        entityType: 'app_user',
-        entityId: user.id,
-        ip,
-        userAgent,
-        meta: { isActive: user.isActive, role: user.role },
-      }, manager);
+      await this.auditService.log(
+        {
+          userId: actorId,
+          action: 'user_update',
+          entityType: 'app_user',
+          entityId: user.id,
+          ip,
+          userAgent,
+          meta: { isActive: user.isActive, role: user.role },
+        },
+        manager,
+      );
       return this.toPublic(user);
     });
   }
@@ -160,15 +189,18 @@ export class UsersService {
       user.passwordHash = passwordHash;
       user.tokenVersion += 1;
       await manager.save(user);
-      await this.auditService.log({
-        userId: actorId,
-        action: 'user_password_reset',
-        entityType: 'app_user',
-        entityId: user.id,
-        ip,
-        userAgent,
-        meta: { email: user.email },
-      }, manager);
+      await this.auditService.log(
+        {
+          userId: actorId,
+          action: 'user_password_reset',
+          entityType: 'app_user',
+          entityId: user.id,
+          ip,
+          userAgent,
+          meta: { email: user.email },
+        },
+        manager,
+      );
       return this.toPublic(user);
     });
   }

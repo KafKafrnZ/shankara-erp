@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Param, Query, Res, UsePipes, ValidationPipe } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Query,
+  Res,
+  UsePipes,
+  ValidationPipe,
+} from '@nestjs/common';
 import type { Response } from 'express';
 import { ItemSearchService } from './item-search.service';
 import { ItemSearchDto } from './dto/item-search.dto';
@@ -51,10 +61,18 @@ export class ItemSearchController {
   @Post('export')
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
   async export(@Body() body: BulkItemCodesDto, @Res() res: Response) {
-    const rows = await this.searchService.getCurrentRowsForExport(body.itemCodes);
+    const rows = await this.searchService.getCurrentRowsForExport(
+      body.itemCodes,
+    );
     const workbook = this.searchService.buildExportWorkbook(rows);
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', 'attachment; filename="catalog-export.xlsx"');
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="catalog-export.xlsx"',
+    );
     await workbook.xlsx.write(res);
     res.end();
   }

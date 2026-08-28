@@ -38,19 +38,30 @@ describe('UsersController (e2e)', () => {
 
     const loginSteward = await request(app.getHttpServer())
       .post('/api/auth/login')
-      .send({ email: 'steward@shankara.local', password: process.env.SEED_STEWARD_PASSWORD });
+      .send({
+        email: 'steward@shankara.local',
+        password: process.env.SEED_STEWARD_PASSWORD,
+      });
     stewardToken = loginSteward.body.accessToken;
 
     const loginFinance = await request(app.getHttpServer())
       .post('/api/auth/login')
-      .send({ email: 'finance@shankara.local', password: process.env.SEED_FINANCE_PASSWORD });
+      .send({
+        email: 'finance@shankara.local',
+        password: process.env.SEED_FINANCE_PASSWORD,
+      });
     financeToken = loginFinance.body.accessToken;
   });
 
   afterAll(async () => {
     for (const id of createdIds) {
-      await db.query(`DELETE FROM audit_event WHERE entity_id = $1 AND entity_type = 'app_user'`, [id]);
-      await db.query(`DELETE FROM app_user WHERE id = $1`, [id]).catch(() => undefined);
+      await db.query(
+        `DELETE FROM audit_event WHERE entity_id = $1 AND entity_type = 'app_user'`,
+        [id],
+      );
+      await db
+        .query(`DELETE FROM app_user WHERE id = $1`, [id])
+        .catch(() => undefined);
     }
     await app.close();
     await db.end();

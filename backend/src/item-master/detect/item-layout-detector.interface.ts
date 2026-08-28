@@ -18,5 +18,8 @@ export interface ItemLayoutDetector {
    *  field — everything else in the file's header row becomes `extra`. */
   knownHeaderKeys: string[];
   detect(headerRow: string[]): boolean;
-  parseRow(row: any[], columns: Record<string, number>): ParsedItemRow | { skip: true; reason: string; code: string };
+  parseRow(
+    row: any[],
+    columns: Record<string, number>,
+  ): ParsedItemRow | { skip: true; reason: string; code: string };
 }

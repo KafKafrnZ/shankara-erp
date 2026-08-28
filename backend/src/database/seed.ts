@@ -34,7 +34,9 @@ async function seed() {
   for (const user of users) {
     const rawPassword = process.env[user.passwordKey];
     if (!rawPassword) {
-      console.warn(`Skipping seed for ${user.email} because ${user.passwordKey} is not set in .env`);
+      console.warn(
+        `Skipping seed for ${user.email} because ${user.passwordKey} is not set in .env`,
+      );
       continue;
     }
 
@@ -49,7 +51,7 @@ async function seed() {
         role = EXCLUDED.role,
         company_id = EXCLUDED.company_id
       `,
-      [user.email, hash, user.displayName, user.role, user.companyId]
+      [user.email, hash, user.displayName, user.role, user.companyId],
     );
     console.log(`Seeded user: ${user.email}`);
   }

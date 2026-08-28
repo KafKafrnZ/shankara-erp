@@ -1,10 +1,10 @@
-import { MigrationInterface, QueryRunner } from "typeorm";
+import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class ItemMasterEntities1787200000001 implements MigrationInterface {
-    name = 'ItemMasterEntities1787200000001'
+  name = 'ItemMasterEntities1787200000001';
 
-    public async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`
+  public async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
             CREATE TABLE "item_master_batch" (
                 "id" bigserial NOT NULL,
                 "source_file_id" bigint NOT NULL,
@@ -26,7 +26,7 @@ export class ItemMasterEntities1787200000001 implements MigrationInterface {
             )
         `);
 
-        await queryRunner.query(`
+    await queryRunner.query(`
             CREATE TABLE "item_master_row" (
                 "id" bigserial NOT NULL,
                 "batch_id" bigint NOT NULL,
@@ -52,7 +52,7 @@ export class ItemMasterEntities1787200000001 implements MigrationInterface {
             )
         `);
 
-        await queryRunner.query(`
+    await queryRunner.query(`
             CREATE TABLE "item_master_skip" (
                 "id" bigserial NOT NULL,
                 "batch_id" bigint NOT NULL,
@@ -65,32 +65,38 @@ export class ItemMasterEntities1787200000001 implements MigrationInterface {
             )
         `);
 
-        await queryRunner.query(`
+    await queryRunner.query(`
             ALTER TABLE "item_master_batch"
             ADD CONSTRAINT "FK_item_master_batch_source_file"
             FOREIGN KEY ("source_file_id") REFERENCES "source_file"("id") ON DELETE NO ACTION ON UPDATE NO ACTION
         `);
 
-        await queryRunner.query(`
+    await queryRunner.query(`
             ALTER TABLE "item_master_row"
             ADD CONSTRAINT "FK_item_master_row_batch"
             FOREIGN KEY ("batch_id") REFERENCES "item_master_batch"("id") ON DELETE NO ACTION ON UPDATE NO ACTION
         `);
 
-        await queryRunner.query(`
+    await queryRunner.query(`
             ALTER TABLE "item_master_skip"
             ADD CONSTRAINT "FK_item_master_skip_batch"
             FOREIGN KEY ("batch_id") REFERENCES "item_master_batch"("id") ON DELETE NO ACTION ON UPDATE NO ACTION
         `);
-    }
+  }
 
-    public async down(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`ALTER TABLE "item_master_skip" DROP CONSTRAINT "FK_item_master_skip_batch"`);
-        await queryRunner.query(`ALTER TABLE "item_master_row" DROP CONSTRAINT "FK_item_master_row_batch"`);
-        await queryRunner.query(`ALTER TABLE "item_master_batch" DROP CONSTRAINT "FK_item_master_batch_source_file"`);
-        
-        await queryRunner.query(`DROP TABLE "item_master_skip"`);
-        await queryRunner.query(`DROP TABLE "item_master_row"`);
-        await queryRunner.query(`DROP TABLE "item_master_batch"`);
-    }
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(
+      `ALTER TABLE "item_master_skip" DROP CONSTRAINT "FK_item_master_skip_batch"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "item_master_row" DROP CONSTRAINT "FK_item_master_row_batch"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "item_master_batch" DROP CONSTRAINT "FK_item_master_batch_source_file"`,
+    );
+
+    await queryRunner.query(`DROP TABLE "item_master_skip"`);
+    await queryRunner.query(`DROP TABLE "item_master_row"`);
+    await queryRunner.query(`DROP TABLE "item_master_batch"`);
+  }
 }

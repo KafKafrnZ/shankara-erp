@@ -10,12 +10,20 @@ export class AllowManualItemBatches1787440000000 implements MigrationInterface {
   name = 'AllowManualItemBatches1787440000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE "item_master_batch" ALTER COLUMN "source_file_id" DROP NOT NULL`);
-    await queryRunner.query(`ALTER TABLE "item_master_batch" ADD COLUMN "is_manual" boolean NOT NULL DEFAULT false`);
+    await queryRunner.query(
+      `ALTER TABLE "item_master_batch" ALTER COLUMN "source_file_id" DROP NOT NULL`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "item_master_batch" ADD COLUMN "is_manual" boolean NOT NULL DEFAULT false`,
+    );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE "item_master_batch" DROP COLUMN "is_manual"`);
-    await queryRunner.query(`ALTER TABLE "item_master_batch" ALTER COLUMN "source_file_id" SET NOT NULL`);
+    await queryRunner.query(
+      `ALTER TABLE "item_master_batch" DROP COLUMN "is_manual"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "item_master_batch" ALTER COLUMN "source_file_id" SET NOT NULL`,
+    );
   }
 }

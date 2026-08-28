@@ -21,7 +21,9 @@ import { ItemMasterModule } from './item-master/item-master.module';
     ConfigModule.forRoot({
       isGlobal: true,
       validationSchema: Joi.object({
-        NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
+        NODE_ENV: Joi.string()
+          .valid('development', 'production', 'test')
+          .default('development'),
         PORT: Joi.number().default(3000),
         CORS_ORIGIN: Joi.string().required(),
         DATABASE_HOST: Joi.string().required(),

@@ -20,7 +20,7 @@ export class AuthService {
 
   async login(loginDto: LoginDto, ip?: string, userAgent?: string) {
     const user = await this.usersService.findByEmail(loginDto.email);
-    
+
     if (!user || !user.isActive) {
       await bcrypt.compare(loginDto.password, this.dummyHash);
       await this.auditService.log({
@@ -30,7 +30,10 @@ export class AuthService {
         entityId: user ? user.id : undefined,
         ip,
         userAgent,
-        meta: { email: loginDto.email, reason: !user ? 'not_found' : 'inactive' },
+        meta: {
+          email: loginDto.email,
+          reason: !user ? 'not_found' : 'inactive',
+        },
       });
       throw new UnauthorizedException('Invalid credentials');
     }
@@ -59,7 +62,11 @@ export class AuthService {
       meta: { email: user.email },
     });
 
-    const payload: JwtPayload = { sub: user.id, role: user.role, ver: user.tokenVersion };
+    const payload: JwtPayload = {
+      sub: user.id,
+      role: user.role,
+      ver: user.tokenVersion,
+    };
     const accessToken = this.jwtService.sign(payload);
 
     return {

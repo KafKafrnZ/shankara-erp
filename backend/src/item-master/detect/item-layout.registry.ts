@@ -1,4 +1,7 @@
-import { ItemLayoutDetector, ParsedItemRow } from './item-layout-detector.interface';
+import {
+  ItemLayoutDetector,
+  ParsedItemRow,
+} from './item-layout-detector.interface';
 
 function normalizeHeader(header: any): string {
   if (typeof header !== 'string') return '';
@@ -8,7 +11,7 @@ function normalizeHeader(header: any): string {
 
 function matchHeaders(actual: any[], expected: string[]): boolean {
   const normActual = actual.map(normalizeHeader);
-  return expected.every(exp => normActual.includes(exp));
+  return expected.every((exp) => normActual.includes(exp));
 }
 
 // Some real exports use a literal "-" (or similar) as an end-of-data /
@@ -29,21 +32,41 @@ export const sapItemMasterDetector: ItemLayoutDetector = {
   // Every header this layout maps into a fixed column — anything else in
   // the file lands in `extra` instead of being silently dropped.
   knownHeaderKeys: [
-    'sap item code', 'catalogue no', 'brand', 'main group', 'sub group', 'uom',
-    'hsn description', 'alias',
-    'sap item description', 'stock item name for searching', 'stock item name for migration',
+    'sap item code',
+    'catalogue no',
+    'brand',
+    'main group',
+    'sub group',
+    'uom',
+    'hsn description',
+    'alias',
+    'sap item description',
+    'stock item name for searching',
+    'stock item name for migration',
   ],
   detect(headerRow: any[]): boolean {
-    const required = ['sap item code', 'catalogue no', 'brand', 'main group', 'uom'];
+    const required = [
+      'sap item code',
+      'catalogue no',
+      'brand',
+      'main group',
+      'uom',
+    ];
     return matchHeaders(headerRow, required);
   },
-  parseRow(row: any[], columns: Record<string, number>): ParsedItemRow | { skip: true; reason: string; code: string } {
+  parseRow(
+    row: any[],
+    columns: Record<string, number>,
+  ): ParsedItemRow | { skip: true; reason: string; code: string } {
     const sapItemCode = row[columns['sap item code']];
     const catalogueNo = row[columns['catalogue no']];
-    
+
     // Fallbacks since some files might have 'sap item description' or 'stock item name for searching'
-    const itemName = row[columns['sap item description']] || row[columns['stock item name for searching']] || row[columns['stock item name for migration']];
-    
+    const itemName =
+      row[columns['sap item description']] ||
+      row[columns['stock item name for searching']] ||
+      row[columns['stock item name for migration']];
+
     const brand = row[columns['brand']];
     const mainGroup = row[columns['main group']];
     const subGroup = row[columns['sub group']];
@@ -53,10 +76,18 @@ export const sapItemMasterDetector: ItemLayoutDetector = {
 
     const itemCode = sapItemCode || catalogueNo;
     if (isPlaceholderValue(itemCode)) {
-      return { skip: true, reason: 'Missing stable identifier (SAP Item Code / Catalogue No)', code: 'MISSING_ITEM_CODE' };
+      return {
+        skip: true,
+        reason: 'Missing stable identifier (SAP Item Code / Catalogue No)',
+        code: 'MISSING_ITEM_CODE',
+      };
     }
     if (isPlaceholderValue(itemName)) {
-      return { skip: true, reason: 'Missing item name', code: 'MISSING_ITEM_NAME' };
+      return {
+        skip: true,
+        reason: 'Missing item name',
+        code: 'MISSING_ITEM_NAME',
+      };
     }
 
     return {
@@ -71,25 +102,45 @@ export const sapItemMasterDetector: ItemLayoutDetector = {
       uom: uom ? String(uom) : undefined,
       alias: alias ? String(alias) : undefined,
     };
-  }
+  },
 };
 
 // 2. Master Code Detector
 export const masterCodeDetector: ItemLayoutDetector = {
   key: 'master_code_v1',
   knownHeaderKeys: [
-    'catalogue no', 'brand', 'stock item name for migration', 'alias',
-    'main group', 'sub group', 'uom', 'hsn description',
+    'catalogue no',
+    'brand',
+    'stock item name for migration',
+    'alias',
+    'main group',
+    'sub group',
+    'uom',
+    'hsn description',
   ],
   detect(headerRow: any[]): boolean {
-    const required = ['catalogue no', 'brand', 'stock item name for migration', 'alias', 'main group', 'sub group', 'uom'];
-    return matchHeaders(headerRow, required) && !normalizeHeader(headerRow[0]).match(/^$/); // Make sure it's not the blank first header layout
+    const required = [
+      'catalogue no',
+      'brand',
+      'stock item name for migration',
+      'alias',
+      'main group',
+      'sub group',
+      'uom',
+    ];
+    return (
+      matchHeaders(headerRow, required) &&
+      !normalizeHeader(headerRow[0]).match(/^$/)
+    ); // Make sure it's not the blank first header layout
   },
-  parseRow(row: any[], columns: Record<string, number>): ParsedItemRow | { skip: true; reason: string; code: string } {
+  parseRow(
+    row: any[],
+    columns: Record<string, number>,
+  ): ParsedItemRow | { skip: true; reason: string; code: string } {
     const alias = row[columns['alias']];
     const catalogueNo = row[columns['catalogue no']];
     const itemName = row[columns['stock item name for migration']];
-    
+
     const brand = row[columns['brand']];
     const mainGroup = row[columns['main group']];
     const subGroup = row[columns['sub group']];
@@ -98,10 +149,18 @@ export const masterCodeDetector: ItemLayoutDetector = {
 
     const itemCode = alias || catalogueNo;
     if (isPlaceholderValue(itemCode)) {
-      return { skip: true, reason: 'Missing stable identifier (Alias / Catalogue No)', code: 'MISSING_ITEM_CODE' };
+      return {
+        skip: true,
+        reason: 'Missing stable identifier (Alias / Catalogue No)',
+        code: 'MISSING_ITEM_CODE',
+      };
     }
     if (isPlaceholderValue(itemName)) {
-      return { skip: true, reason: 'Missing item name', code: 'MISSING_ITEM_NAME' };
+      return {
+        skip: true,
+        reason: 'Missing item name',
+        code: 'MISSING_ITEM_NAME',
+      };
     }
 
     return {
@@ -115,7 +174,7 @@ export const masterCodeDetector: ItemLayoutDetector = {
       uom: uom ? String(uom) : undefined,
       alias: alias ? String(alias) : undefined,
     };
-  }
+  },
 };
 
 // 3. CP Sani Others Detector
@@ -124,19 +183,37 @@ export const cpSaniOthersDetector: ItemLayoutDetector = {
   // 'category' is required for detection but was never captured into a
   // fixed field — leave it out of this list so it flows into `extra`
   // instead of being dropped.
-  knownHeaderKeys: ['stock item name', 'alias', 'main group', 'sub group', 'uom', 'brand', 'hsn description'],
+  knownHeaderKeys: [
+    'stock item name',
+    'alias',
+    'main group',
+    'sub group',
+    'uom',
+    'brand',
+    'hsn description',
+  ],
   detect(headerRow: any[]): boolean {
-    const required = ['stock item name', 'alias', 'main group', 'sub group', 'uom', 'category'];
+    const required = [
+      'stock item name',
+      'alias',
+      'main group',
+      'sub group',
+      'uom',
+      'category',
+    ];
     // First header cell is blank
     const isFirstBlank = !headerRow[0] || normalizeHeader(headerRow[0]) === '';
     return isFirstBlank && matchHeaders(headerRow, required);
   },
-  parseRow(row: any[], columns: Record<string, number>): ParsedItemRow | { skip: true; reason: string; code: string } {
+  parseRow(
+    row: any[],
+    columns: Record<string, number>,
+  ): ParsedItemRow | { skip: true; reason: string; code: string } {
     // First column (index 0) is the code directly
     const directCode = row[0];
     const alias = row[columns['alias']];
     const itemName = row[columns['stock item name']];
-    
+
     const brand = row[columns['brand']]; // Might not exist
     const mainGroup = row[columns['main group']];
     const subGroup = row[columns['sub group']];
@@ -145,10 +222,18 @@ export const cpSaniOthersDetector: ItemLayoutDetector = {
 
     const itemCode = directCode || alias;
     if (isPlaceholderValue(itemCode)) {
-      return { skip: true, reason: 'Missing stable identifier (Col 0 / Alias)', code: 'MISSING_ITEM_CODE' };
+      return {
+        skip: true,
+        reason: 'Missing stable identifier (Col 0 / Alias)',
+        code: 'MISSING_ITEM_CODE',
+      };
     }
     if (isPlaceholderValue(itemName)) {
-      return { skip: true, reason: 'Missing item name', code: 'MISSING_ITEM_NAME' };
+      return {
+        skip: true,
+        reason: 'Missing item name',
+        code: 'MISSING_ITEM_NAME',
+      };
     }
 
     return {
@@ -161,7 +246,7 @@ export const cpSaniOthersDetector: ItemLayoutDetector = {
       uom: uom ? String(uom) : undefined,
       alias: alias ? String(alias) : undefined,
     };
-  }
+  },
 };
 
 export const ITEM_LAYOUT_REGISTRY: ItemLayoutDetector[] = [

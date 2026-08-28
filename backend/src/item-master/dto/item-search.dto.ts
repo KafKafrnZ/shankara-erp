@@ -1,4 +1,12 @@
-import { IsOptional, IsString, Length, IsInt, Min, Max, IsObject } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  Length,
+  IsInt,
+  Min,
+  Max,
+  IsObject,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class ItemSearchDto {

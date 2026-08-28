@@ -71,10 +71,10 @@ describe('Auth (e2e)', () => {
       })
       .expect(401);
 
-    const rows = (await dataSource.query(
+    const rows = await dataSource.query(
       `SELECT action FROM audit_event WHERE action = $1 ORDER BY id DESC LIMIT 1`,
       ['login_failed'],
-    )) as Array<{ action: string }>;
+    );
     expect(rows[0]?.action).toBe('login_failed');
   });
 
@@ -94,7 +94,9 @@ describe('Auth (e2e)', () => {
   });
 
   it('GET /api/meta/live-sources is authenticated and lists live/pending buckets', async () => {
-    await request(app.getHttpServer()).get('/api/meta/live-sources').expect(401);
+    await request(app.getHttpServer())
+      .get('/api/meta/live-sources')
+      .expect(401);
 
     const login = await request(app.getHttpServer())
       .post('/api/auth/login')
@@ -125,16 +127,16 @@ describe('Auth (e2e)', () => {
   });
 
   it('steward CAN hit a steward-only upload', async () => {
-    const fs = require('fs');
     const path = require('path');
-    const fixturePath = path.resolve(__dirname, '../fixtures/item-master/tiny.xlsx');
-    if (!fs.existsSync(fixturePath)) {
-      // Content doesn't need to be a real workbook — the point of this test
-      // is the auth/role gate, not successful parsing (which happens async,
-      // after this response). The extension check is filename-only.
-      fs.mkdirSync(path.dirname(fixturePath), { recursive: true });
-      fs.writeFileSync(fixturePath, 'mock,xlsx,data\n');
-    }
+    // Must be a real .xlsx (ZIP local file header) — the upload endpoint
+    // content-sniffs the file, so fake CSV-with-.xlsx-extension content
+    // gets a 400 before the auth/role gate this test is actually checking.
+    // What's inside doesn't matter beyond that; parsing happens async,
+    // after this response.
+    const fixturePath = path.resolve(
+      __dirname,
+      '../fixtures/item-master/test-fixture-1.xlsx',
+    );
 
     const res = await request(app.getHttpServer())
       .post('/api/item-uploads')

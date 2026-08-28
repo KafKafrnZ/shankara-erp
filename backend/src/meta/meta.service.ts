@@ -72,7 +72,8 @@ export class MetaService {
 
 function iso(value: unknown): string | null {
   if (value == null || value === '') return null;
-  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  if (value instanceof Date)
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
   const d = new Date(String(value));
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }

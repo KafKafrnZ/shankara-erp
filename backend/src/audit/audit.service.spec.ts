@@ -24,18 +24,20 @@ describe('AuditService', () => {
   });
 
   it('rejects unknown action', async () => {
-    await expect(service.log({ action: 'explode' as any })).rejects.toThrow(/UNKNOWN_AUDIT_ACTION/);
+    await expect(service.log({ action: 'explode' as any })).rejects.toThrow(
+      /UNKNOWN_AUDIT_ACTION/,
+    );
   });
 
   it('rejects password in meta', async () => {
     await expect(
-      service.log({ action: 'login', meta: { password: 'x' } })
+      service.log({ action: 'login', meta: { password: 'x' } }),
     ).rejects.toThrow();
   });
 
   it('accepts valid action', async () => {
     await expect(
-      service.log({ action: 'login', entityType: 'app_user', entityId: '1' })
+      service.log({ action: 'login', entityType: 'app_user', entityId: '1' }),
     ).resolves.not.toThrow();
   });
 });

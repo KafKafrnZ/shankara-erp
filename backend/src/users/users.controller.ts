@@ -22,7 +22,12 @@ export class UsersController {
 
   @Post()
   create(@Body() dto: CreateUserDto, @Req() req: AuthedRequest) {
-    return this.usersService.create(dto, req.user.id, req.ip, req.headers['user-agent']);
+    return this.usersService.create(
+      dto,
+      req.user.id,
+      req.ip,
+      req.headers['user-agent'],
+    );
   }
 
   @Patch(':id')
@@ -31,7 +36,13 @@ export class UsersController {
     @Body() dto: UpdateUserDto,
     @Req() req: AuthedRequest,
   ) {
-    return this.usersService.update(String(id), dto, req.user.id, req.ip, req.headers['user-agent']);
+    return this.usersService.update(
+      String(id),
+      dto,
+      req.user.id,
+      req.ip,
+      req.headers['user-agent'],
+    );
   }
 
   @Post(':id/reset-password')

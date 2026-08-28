@@ -9,19 +9,26 @@ export class LocalFsObjectStore implements ObjectStore {
   private readonly storageDir: string;
 
   constructor(private configService: ConfigService) {
-    this.storageDir = path.resolve(process.cwd(), this.configService.get<string>('STORAGE_DIR') || './var/uploads');
+    this.storageDir = path.resolve(
+      process.cwd(),
+      this.configService.get<string>('STORAGE_DIR') || './var/uploads',
+    );
   }
 
   private getKeyPath(key: string): string {
     return path.join(this.storageDir, key);
   }
 
-  async put(sha256: string, body: NodeJS.ReadableStream | Buffer, contentType: string): Promise<StoredObject> {
+  async put(
+    sha256: string,
+    body: NodeJS.ReadableStream | Buffer,
+    contentType: string,
+  ): Promise<StoredObject> {
     const first2 = sha256.substring(0, 2);
     const next2 = sha256.substring(2, 4);
     const key = `${first2}/${next2}/${sha256}`;
     const fullPath = this.getKeyPath(key);
-    
+
     if (await this.exists(key)) {
       const stats = await fs.promises.stat(fullPath);
       return { key, sha256, bytes: stats.size };
@@ -35,7 +42,9 @@ export class LocalFsObjectStore implements ObjectStore {
 
       writeStream.on('error', (err) => {
         fs.unlink(fullPath, () => {});
-        reject(new InternalServerErrorException('Failed to write to local storage'));
+        reject(
+          new InternalServerErrorException('Failed to write to local storage'),
+        );
       });
 
       writeStream.on('finish', () => {

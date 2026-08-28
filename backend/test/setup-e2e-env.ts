@@ -17,7 +17,9 @@ const required = [
 
 for (const key of required) {
   if (!process.env[key]) {
-    throw new Error(`e2e missing required env ${key}. Copy backend/.env.example to backend/.env`);
+    throw new Error(
+      `e2e missing required env ${key}. Copy backend/.env.example to backend/.env`,
+    );
   }
 }
 

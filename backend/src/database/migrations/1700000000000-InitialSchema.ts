@@ -34,8 +34,12 @@ export class InitialSchema1700000000000 implements MigrationInterface {
         meta         JSONB NOT NULL DEFAULT '{}'::jsonb
       )
     `);
-    await queryRunner.query(`CREATE INDEX idx_audit_at ON audit_event (at DESC)`);
-    await queryRunner.query(`CREATE INDEX idx_audit_user ON audit_event (user_id, at DESC)`);
+    await queryRunner.query(
+      `CREATE INDEX idx_audit_at ON audit_event (at DESC)`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX idx_audit_user ON audit_event (user_id, at DESC)`,
+    );
 
     await queryRunner.query(`
       CREATE TABLE source_file (
@@ -89,7 +93,9 @@ export class InitialSchema1700000000000 implements MigrationInterface {
         raw           JSONB
       )
     `);
-    await queryRunner.query(`CREATE INDEX idx_reject_batch ON ingest_reject (batch_id)`);
+    await queryRunner.query(
+      `CREATE INDEX idx_reject_batch ON ingest_reject (batch_id)`,
+    );
 
     await queryRunner.query(`
       CREATE TABLE master_ledger (
@@ -131,11 +137,21 @@ export class InitialSchema1700000000000 implements MigrationInterface {
       )
     `);
 
-    await queryRunner.query(`CREATE INDEX idx_voucher_search_no ON voucher (company_id, vch_no_norm)`);
-    await queryRunner.query(`CREATE INDEX idx_voucher_search_date ON voucher (company_id, vch_date)`);
-    await queryRunner.query(`CREATE INDEX idx_voucher_search_party ON voucher (company_id, party_name)`);
-    await queryRunner.query(`CREATE INDEX idx_voucher_current ON voucher (company_id) WHERE valid_to IS NULL AND is_deleted = FALSE`);
-    await queryRunner.query(`CREATE INDEX idx_voucher_amount ON voucher (company_id, total_amount) WHERE valid_to IS NULL`);
+    await queryRunner.query(
+      `CREATE INDEX idx_voucher_search_no ON voucher (company_id, vch_no_norm)`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX idx_voucher_search_date ON voucher (company_id, vch_date)`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX idx_voucher_search_party ON voucher (company_id, party_name)`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX idx_voucher_current ON voucher (company_id) WHERE valid_to IS NULL AND is_deleted = FALSE`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX idx_voucher_amount ON voucher (company_id, total_amount) WHERE valid_to IS NULL`,
+    );
 
     await queryRunner.query(`
       CREATE TABLE voucher_line (
@@ -152,7 +168,9 @@ export class InitialSchema1700000000000 implements MigrationInterface {
         )
       )
     `);
-    await queryRunner.query(`CREATE INDEX idx_voucher_line_ledger ON voucher_line (ledger_name)`);
+    await queryRunner.query(
+      `CREATE INDEX idx_voucher_line_ledger ON voucher_line (ledger_name)`,
+    );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
