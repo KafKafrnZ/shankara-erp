@@ -28,7 +28,7 @@ const EXPORT_FIXED_COLUMNS: Array<{
 // "100" (and a bare "%" matches the entire catalog) — item names in a
 // tile/sanitaryware catalog genuinely contain these characters, so a
 // user's literal search has to stay literal.
-function escapeLike(value: string): string {
+export function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
 
