@@ -265,6 +265,18 @@ use, rather than a parallel "just UPDATE the row" path:
   10 fixed fields + every known `extra` key (alphabetical). The clipboard
   version is tab-separated — pasting it into an open Excel sheet lands as
   real columns, not one messy cell (`frontend/src/lib/excel-export.ts`).
+- **Whole result set (filtered, not selected)** — `POST
+  /api/item-search/export-filtered` takes the same query shape as `POST
+  /api/item-search` (`q`/`mainGroup`/`subGroup`/`brand`/`extra`, no
+  `limit`/`offset`) and exports every matching row, not what's checked
+  into the tray. Reuses `search()`'s exact WHERE-clause logic via
+  `ItemSearchService.buildFilterQuery()` so "matching" can't drift between
+  the two. Capped at 20,000 rows (`MAX_FILTERED_EXPORT`) as a memory/
+  response-size safety net rather than a usability limit; the response
+  carries `X-Export-Truncated` / `X-Export-Row-Count` headers so the
+  frontend's "Export all N matching" button (next to the results pager,
+  shown once a filtered result exceeds one page) can say honestly whether
+  the download is complete or was cut off.
 
 ---
 
@@ -392,7 +404,12 @@ the machine this was tested on, which also runs everything else at once).
 - Single Postgres instance, no replica/failover.
 
 **Data & workflow**
-- Bulk export/copy caps at 200 items — no "export this whole category."
+- The selection tray's copy/export (hand-checked rows) still caps at 200 —
+  a reasonable limit on manually ticking boxes. "Export this whole
+  category" now has its own path: `POST /api/item-search/export-filtered`
+  exports everything matching the current search/filter, capped at 20,000
+  rows as a safety net rather than a usability limit (see the "Export all
+  N matching" button next to the results pager).
 - Manual edits publish instantly (by design — see the CRUD design
   decision in git history), so there's no single "undo" for a typo, only
   editing again.
