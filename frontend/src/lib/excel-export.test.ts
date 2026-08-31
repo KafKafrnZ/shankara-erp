@@ -19,16 +19,29 @@ describe('buildExcelPasteText', () => {
     expect(row1.split('\t')[1]).toBe('Item One');
   });
 
-  it('appends extra columns as the union of keys across all rows, sorted', () => {
+  it('appends extra columns in first-seen order, not alphabetically', () => {
     const rows: ExportableRow[] = [
       { itemCode: 'A', itemName: 'A', extra: { Zeta: 'z1' } },
       { itemCode: 'B', itemName: 'B', extra: { Alpha: 'a1' } },
     ];
     const text = buildExcelPasteText(rows);
     const header = text.split('\n')[0].split('\t');
-    // Fixed columns come first, then extra keys sorted alphabetically —
-    // Alpha before Zeta even though Zeta's row appeared first.
-    expect(header.slice(-2)).toEqual(['Alpha', 'Zeta']);
+    // The API pads extra in sheet-header order. Sorting here would put
+    // Alpha before Zeta and scramble columns relative to the file.
+    expect(header.slice(-2)).toEqual(['Zeta', 'Alpha']);
+  });
+
+  it('keeps a padded empty extra column so a blank sheet field still exports', () => {
+    const rows: ExportableRow[] = [
+      { itemCode: 'A', itemName: 'A', extra: { 'MRP Value': '', 'HSN No': '123' } },
+    ];
+    const text = buildExcelPasteText(rows);
+    const header = text.split('\n')[0].split('\t');
+    const data = text.split('\n')[1].split('\t');
+    const mrpIdx = header.indexOf('MRP Value');
+    expect(mrpIdx).toBeGreaterThan(-1);
+    expect(data[mrpIdx]).toBe('');
+    expect(header).toContain('SAP Item Code');
   });
 
   it('pads a blank cell for an extra key a given row has no value for', () => {

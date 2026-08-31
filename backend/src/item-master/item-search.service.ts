@@ -4,6 +4,50 @@ import { Repository, Brackets } from 'typeorm';
 import * as ExcelJS from 'exceljs';
 import { ItemMasterRow } from './entities/item-master-row.entity';
 
+/** Sheet-header order first (including columns that were blank on every
+ *  row), then any extra keys that only exist on live rows, alphabetically.
+ *  Copy/export must not sort the whole set — the IT ask was every field
+ *  the file had, in a stable order. */
+export function mergeExportExtraKeys(
+  sheetHeaders: string[],
+  dataKeys: string[],
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of sheetHeaders) {
+    const key = raw?.trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(key);
+  }
+  const rest = dataKeys
+    .map((k) => k?.trim())
+    .filter((k): k is string => Boolean(k) && !seen.has(k))
+    .sort((a, b) => a.localeCompare(b));
+  for (const key of rest) {
+    seen.add(key);
+    out.push(key);
+  }
+  return out;
+}
+
+/** First-seen extra key order across padded rows — not alphabetical.
+ *  Callers pad extra from getExportExtraKeys() so this matches sheet order. */
+export function extraKeysInOrder(
+  rows: Array<{ extra?: Record<string, string> | null }>,
+): string[] {
+  const keys: string[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    for (const key of Object.keys(row.extra || {})) {
+      if (seen.has(key)) continue;
+      seen.add(key);
+      keys.push(key);
+    }
+  }
+  return keys;
+}
+
 // Column order for both the bulk/export endpoints and the Excel workbook —
 // same fixed fields the drawer already shows, in the same order, so the
 // paste and the on-screen card read the same way.
@@ -322,6 +366,33 @@ export class ItemSearchService {
       .getMany();
   }
 
+  /** Extra keys copy/export must pad to: every extra header the published
+   *  source files actually had (even all-blank columns) plus any extra
+   *  keys currently present on live rows. */
+  async getExportExtraKeys(): Promise<string[]> {
+    const [fields, headerRows] = await Promise.all([
+      this.getAvailableExtraFields(),
+      this.rowRepo.manager.query(
+        `SELECT extra_headers
+           FROM item_master_batch
+          WHERE status = 'published'
+            AND extra_headers IS NOT NULL
+            AND cardinality(extra_headers) > 0
+          ORDER BY published_at ASC NULLS LAST, id ASC`,
+      ) as Promise<Array<{ extra_headers: string[] }>>,
+    ]);
+    const sheetHeaders: string[] = [];
+    for (const row of headerRows) {
+      for (const header of row.extra_headers || []) {
+        sheetHeaders.push(header);
+      }
+    }
+    return mergeExportExtraKeys(
+      sheetHeaders,
+      fields.map((f) => f.key),
+    );
+  }
+
   /** Everything matching the current search/filter — not what's checked in
    *  the selection tray. The tray's 200-code cap is a reasonable limit on
    *  hand-picking rows one at a time; it was never meant to be the ceiling
@@ -341,13 +412,12 @@ export class ItemSearchService {
     extra?: Record<string, string>;
   }) {
     const qb = this.buildFilterQuery(query);
-    const [rows, fields] = await Promise.all([
+    const [rows, allKeys] = await Promise.all([
       qb.clone().take(MAX_FILTERED_EXPORT + 1).getMany(),
-      this.getAvailableExtraFields(),
+      this.getExportExtraKeys(),
     ]);
     const truncated = rows.length > MAX_FILTERED_EXPORT;
     const limited = truncated ? rows.slice(0, MAX_FILTERED_EXPORT) : rows;
-    const allKeys = fields.map((f) => f.key);
     return {
       truncated,
       rows: limited.map((row) => ({
@@ -367,11 +437,10 @@ export class ItemSearchService {
    *  data or not" — so callers must never fall back to whatever keys
    *  happen to be present on the selected rows themselves. */
   async getCurrentRowsForExport(itemCodes: string[]) {
-    const [rows, fields] = await Promise.all([
+    const [rows, allKeys] = await Promise.all([
       this.getCurrentRows(itemCodes),
-      this.getAvailableExtraFields(),
+      this.getExportExtraKeys(),
     ]);
-    const allKeys = fields.map((f) => f.key);
     return rows.map((row) => ({
       ...row,
       extra: Object.fromEntries(
@@ -380,14 +449,12 @@ export class ItemSearchService {
     }));
   }
 
-  /** Header row = the fixed fields every item has, plus the union of
-   *  `extra` keys present across the given rows. Callers that want every
-   *  known catalog column (not just what these rows happen to have) should
-   *  pass rows from getCurrentRowsForExport(), which pre-pads them. */
+  /** Header row = the fixed fields every item has, plus the extra keys
+   *  on the given rows in the order they were padded (sheet order).
+   *  Callers that want every known catalog column should pass rows from
+   *  getCurrentRowsForExport() / getFilteredRowsForExport(). */
   buildExportWorkbook(rows: ItemMasterRow[]): ExcelJS.Workbook {
-    const extraKeys = [
-      ...new Set(rows.flatMap((r) => Object.keys(r.extra || {}))),
-    ].sort();
+    const extraKeys = extraKeysInOrder(rows);
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Items');

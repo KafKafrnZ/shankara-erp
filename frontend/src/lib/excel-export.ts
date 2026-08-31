@@ -31,12 +31,27 @@ function tsvCell(value: unknown): string {
   return String(value ?? '').replace(/\t/g, ' ').replace(/\r?\n/g, ' ');
 }
 
+/** First-seen extra key order across rows. The API pads `extra` in sheet
+ *  order, so sorting here would scramble columns relative to the file. */
+export function extraKeysInOrder(rows: ExportableRow[]): string[] {
+  const keys: string[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    for (const key of Object.keys(row.extra || {})) {
+      if (seen.has(key)) continue;
+      seen.add(key);
+      keys.push(key);
+    }
+  }
+  return keys;
+}
+
 /** Tab-separated header row + one row per item. Pasted into an open Excel
  *  sheet, this lands as real columns instantly — no manual re-splitting,
  *  which is what a plain "Label: value" text block would force. */
 export function buildExcelPasteText(rows: ExportableRow[]): string {
   if (rows.length === 0) return '';
-  const extraKeys = [...new Set(rows.flatMap((r) => Object.keys(r.extra || {})))].sort();
+  const extraKeys = extraKeysInOrder(rows);
   const header = [...FIXED_COLUMNS.map((c) => c.label), ...extraKeys];
   const lines = [header.map(tsvCell).join('\t')];
   for (const row of rows) {

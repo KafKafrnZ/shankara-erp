@@ -117,6 +117,10 @@ export const masterCodeDetector: ItemLayoutDetector = {
     'sub group',
     'uom',
     'hsn description',
+    // Present on the SAP item-master sheet; some master-code files carry
+    // it too. Capture into the fixed field so export/copy don't have to
+    // fish it out of extra.
+    'sap item code',
   ],
   detect(headerRow: any[]): boolean {
     const required = [
@@ -139,6 +143,7 @@ export const masterCodeDetector: ItemLayoutDetector = {
   ): ParsedItemRow | { skip: true; reason: string; code: string } {
     const alias = row[columns['alias']];
     const catalogueNo = row[columns['catalogue no']];
+    const sapItemCode = row[columns['sap item code']];
     const itemName = row[columns['stock item name for migration']];
 
     const brand = row[columns['brand']];
@@ -147,7 +152,7 @@ export const masterCodeDetector: ItemLayoutDetector = {
     const uom = row[columns['uom']];
     const hsnDescription = row[columns['hsn description']];
 
-    const itemCode = alias || catalogueNo;
+    const itemCode = alias || catalogueNo || sapItemCode;
     if (isPlaceholderValue(itemCode)) {
       return {
         skip: true,
@@ -166,6 +171,7 @@ export const masterCodeDetector: ItemLayoutDetector = {
     return {
       itemCode: String(itemCode),
       catalogueNo: catalogueNo ? String(catalogueNo) : undefined,
+      sapItemCode: sapItemCode ? String(sapItemCode) : undefined,
       brand: brand ? String(brand) : undefined,
       itemName: String(itemName),
       hsnDescription: hsnDescription ? String(hsnDescription) : undefined,
@@ -191,6 +197,7 @@ export const cpSaniOthersDetector: ItemLayoutDetector = {
     'uom',
     'brand',
     'hsn description',
+    'sap item code',
   ],
   detect(headerRow: any[]): boolean {
     const required = [
@@ -212,6 +219,7 @@ export const cpSaniOthersDetector: ItemLayoutDetector = {
     // First column (index 0) is the code directly
     const directCode = row[0];
     const alias = row[columns['alias']];
+    const sapItemCode = row[columns['sap item code']];
     const itemName = row[columns['stock item name']];
 
     const brand = row[columns['brand']]; // Might not exist
@@ -238,6 +246,7 @@ export const cpSaniOthersDetector: ItemLayoutDetector = {
 
     return {
       itemCode: String(itemCode),
+      sapItemCode: sapItemCode ? String(sapItemCode) : undefined,
       brand: brand ? String(brand) : undefined,
       itemName: String(itemName),
       hsnDescription: hsnDescription ? String(hsnDescription) : undefined,
@@ -267,4 +276,25 @@ export function buildColumnMap(headerRow: any[]): Record<string, number> {
     }
   }
   return map;
+}
+
+/** Extra-column labels from a recognized sheet's header, in sheet order.
+ *  Empty columns still count — copy/export has to show every field the
+ *  file had, whether a given row filled it in or not. */
+export function extraHeadersFromHeaderRow(
+  headerRow: any[],
+  knownHeaderKeys: string[],
+): string[] {
+  const columnMap = buildColumnMap(headerRow);
+  const known = new Set(knownHeaderKeys);
+  const labels: string[] = [];
+  const seen = new Set<string>();
+  for (const [normalized, colIndex] of Object.entries(columnMap)) {
+    if (known.has(normalized)) continue;
+    const label = String(headerRow[colIndex] ?? '').trim();
+    if (!label || seen.has(label)) continue;
+    seen.add(label);
+    labels.push(label);
+  }
+  return labels;
 }

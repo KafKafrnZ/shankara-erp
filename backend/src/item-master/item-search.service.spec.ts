@@ -1,4 +1,8 @@
-import { escapeLike } from './item-search.service';
+import {
+  escapeLike,
+  extraKeysInOrder,
+  mergeExportExtraKeys,
+} from './item-search.service';
 
 // This function exists because of a real bug (found in a pre-demo audit,
 // not by inspection): an unescaped search for "%" matched the entire
@@ -28,5 +32,33 @@ describe('escapeLike', () => {
 
   it('leaves an empty string untouched', () => {
     expect(escapeLike('')).toBe('');
+  });
+});
+
+describe('mergeExportExtraKeys', () => {
+  it('keeps sheet-header order and includes headers that have no live values', () => {
+    expect(
+      mergeExportExtraKeys(
+        ['SI No.', 'MRP Value', 'HSN No'],
+        ['HSN No', 'Category'],
+      ),
+    ).toEqual(['SI No.', 'MRP Value', 'HSN No', 'Category']);
+  });
+
+  it('drops blank and duplicate sheet headers', () => {
+    expect(
+      mergeExportExtraKeys(['  ', 'MRP Value', 'MRP Value'], ['MRP Value']),
+    ).toEqual(['MRP Value']);
+  });
+});
+
+describe('extraKeysInOrder', () => {
+  it('follows first-seen object key order rather than sorting', () => {
+    expect(
+      extraKeysInOrder([
+        { extra: { Zeta: 'z', Alpha: '' } },
+        { extra: { Alpha: 'a', Beta: 'b' } },
+      ]),
+    ).toEqual(['Zeta', 'Alpha', 'Beta']);
   });
 });

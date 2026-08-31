@@ -111,6 +111,53 @@ describe('ItemMasterParser', () => {
       // duplicate into extra.
       expect(item.extra).not.toHaveProperty('Brand');
       expect(item.extra).not.toHaveProperty('Catalogue No');
+      // Empty extra columns still belong on the batch header list so
+      // copy/export can pad them. This fixture has no blank extra col;
+      // the next test covers that case.
+      expect(result.extraHeaders).toEqual(['Item Type', 'GST Rate']);
+    } finally {
+      fs.unlinkSync(tmpPath);
+    }
+  });
+
+  it('records empty extra columns on extraHeaders so export can pad them', async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Sheet1');
+    sheet.addRow([
+      'Catalogue No',
+      'Brand',
+      'Stock Item Name for Migration',
+      'Alias',
+      'Main Group',
+      'Sub Group',
+      'UOM',
+      'SAP Item Code',
+      'MRP Value',
+      'GST Rate',
+    ]);
+    sheet.addRow([
+      'CAT002',
+      'TEST_BRAND',
+      'Blank Extra Item',
+      'ALIAS002',
+      'GROUP1',
+      'SUBGROUP1',
+      'PCS',
+      'SAP-002',
+      '',
+      '18%',
+    ]);
+
+    const tmpPath = path.join(os.tmpdir(), `empty-extra-${Date.now()}.xlsx`);
+    await workbook.xlsx.writeFile(tmpPath);
+    try {
+      const result = await parseItemMasterStream(tmpPath);
+      expect(result.acceptedRows).toBe(1);
+      const item = result.items[0];
+      expect(item.sapItemCode).toBe('SAP-002');
+      expect(item.extra).toEqual({ 'GST Rate': '18%' });
+      expect(item.extra).not.toHaveProperty('MRP Value');
+      expect(result.extraHeaders).toEqual(['MRP Value', 'GST Rate']);
     } finally {
       fs.unlinkSync(tmpPath);
     }

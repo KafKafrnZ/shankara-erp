@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import {
   ITEM_LAYOUT_REGISTRY,
   buildColumnMap,
+  extraHeadersFromHeaderRow,
   isPlaceholderValue,
 } from '../detect/item-layout.registry';
 import { ParsedItemRow } from '../detect/item-layout-detector.interface';
@@ -53,6 +54,11 @@ export interface ParseResult {
       sheetName: string;
     }
   >;
+  /** Extra-column headers from every recognized sheet, in file order,
+   *  including columns that were blank on every row. Stored on the batch
+   *  so copy/export can pad those columns even when `extra` jsonb only
+   *  holds keys that actually had a value. */
+  extraHeaders: string[];
 }
 
 const unwrapCell = (v: any) => {
@@ -79,7 +85,17 @@ function emptyResult(): ParseResult {
     skippedRows: 0,
     skips: [],
     items: [],
+    extraHeaders: [],
   };
+}
+
+function mergeExtraHeaders(into: string[], add: string[]): void {
+  const seen = new Set(into);
+  for (const label of add) {
+    if (!label || seen.has(label)) continue;
+    seen.add(label);
+    into.push(label);
+  }
 }
 
 async function ingestSheet(
@@ -109,6 +125,10 @@ async function ingestSheet(
         headerRow = rowValues;
         result.recognizedSheets++;
         columnMap = buildColumnMap(headerRow);
+        mergeExtraHeaders(
+          result.extraHeaders,
+          extraHeadersFromHeaderRow(headerRow, detector.knownHeaderKeys),
+        );
         continue;
       }
       if (rowsScanned >= 20) {
