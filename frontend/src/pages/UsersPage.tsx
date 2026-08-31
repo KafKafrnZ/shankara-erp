@@ -142,7 +142,7 @@ export function UsersPage() {
   return (
     <div className="upload-page">
       <h1 className="page-title">People who can sign in</h1>
-      <p className="muted page-lead">Add someone, turn their access off, or set a new password. There is no self-signup.</p>
+      <p className="muted page-lead">Add someone, turn their access off, or set a new password. Anyone can also change their own password under Password. There is no self-signup.</p>
 
       {error && <p className="form-error" role="alert">{error}</p>}
       {note && <p className="upload-note">{note}</p>}

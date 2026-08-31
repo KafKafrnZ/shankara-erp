@@ -178,6 +178,7 @@ export class UsersService {
     actorId: string,
     ip?: string,
     userAgent?: string,
+    action: 'user_password_reset' | 'user_password_change' = 'user_password_reset',
   ): Promise<PublicUser> {
     const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     return this.dataSource.transaction(async (manager) => {
@@ -192,7 +193,7 @@ export class UsersService {
       await this.auditService.log(
         {
           userId: actorId,
-          action: 'user_password_reset',
+          action,
           entityType: 'app_user',
           entityId: user.id,
           ip,

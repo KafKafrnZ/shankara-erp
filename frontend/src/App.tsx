@@ -6,6 +6,7 @@ import { LoginPage } from './pages/LoginPage.tsx';
 import { CatalogPage } from './pages/CatalogPage.tsx';
 import { CatalogUploadPage } from './pages/CatalogUploadPage.tsx';
 import { UsersPage } from './pages/UsersPage.tsx';
+import { AccountPage } from './pages/AccountPage.tsx';
 
 function loginNext(path: string, search: string) {
   const next = `${path}${search}`;
@@ -62,6 +63,7 @@ export default function App() {
         <Route element={<AppShell />}>
           <Route path="/catalog" element={<CatalogPage />} />
           <Route path="/catalog/upload" element={<CatalogUploadPage />} />
+          <Route path="/account" element={<AccountPage />} />
           <Route path="/admin/users" element={<UsersPage />} />
         </Route>
       </Route>

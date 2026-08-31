@@ -3,6 +3,7 @@ import type { DragEvent, FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, isApiError } from '../lib/api.ts';
 import { describeItemBatchError, describeItemSkip } from '../lib/item-skip-codes.ts';
+import { isSpreadsheetFilename } from '../lib/spreadsheet-filename.ts';
 import { formatAsOf } from '../lib/format.ts';
 import { useAuth } from '../auth/useAuth.ts';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
@@ -29,7 +30,14 @@ interface ItemBatch {
   uploadedAt: string;
 }
 
-const ACCEPT = '.xlsx, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+const ACCEPT = [
+  '.xlsx',
+  '.xls',
+  '.csv',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel',
+  'text/csv',
+].join(',');
 
 function statusPill(status: string) {
   switch (status) {
@@ -207,10 +215,9 @@ export function ItemUploadFlow({ persistParam, onPublished, onBatchChange }: Pro
     }
     // Catch the wrong file type here rather than letting it upload and fail
     // deep inside the parser.
-    const name = f.name.toLowerCase();
-    if (!name.endsWith('.xlsx')) {
+    if (!isSpreadsheetFilename(f.name)) {
       setFile(null);
-      setError(`"${f.name}" can't be read here. Please choose an Excel .xlsx workbook exported from Tally.`);
+      setError(`"${f.name}" can't be read here. Please choose an Excel workbook (.xlsx or .xls) or a CSV exported from Tally.`);
       return;
     }
     setFile(f);
@@ -330,7 +337,7 @@ export function ItemUploadFlow({ persistParam, onPublished, onBatchChange }: Pro
               {file ? file.name : 'Click to browse or drop an Excel file here'}
             </p>
             <p style={{ margin: '4px 0 0', fontSize: '0.9rem', color: 'var(--muted)' }}>
-              Supports .xlsx from Tally
+              Supports .xlsx, .xls, and .csv from Tally
             </p>
           </div>
           <input

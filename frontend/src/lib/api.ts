@@ -126,6 +126,13 @@ export function logout() {
   return api<{ ok: true }>('/api/auth/logout', { method: 'POST' });
 }
 
+export function changePassword(currentPassword: string, newPassword: string) {
+  return api<{ user: User }>(
+    '/api/auth/password',
+    { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) },
+  );
+}
+
 export function fetchAsOf() {
   return api<{ asOf: string | null; batchId: number | null }>('/api/meta/as-of');
 }

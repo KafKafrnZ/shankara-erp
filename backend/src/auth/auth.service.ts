@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 import { AuditService } from '../audit/audit.service';
@@ -73,6 +77,63 @@ export class AuthService {
       accessToken,
       user: toAuthUser(user),
     };
+  }
+
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+    ip?: string,
+    userAgent?: string,
+  ) {
+    const user = await this.usersService.findById(userId);
+    if (!user || !user.isActive) {
+      await bcrypt.compare(currentPassword, this.dummyHash);
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!isMatch) {
+      await bcrypt.compare(currentPassword, this.dummyHash);
+      await this.auditService.log({
+        userId: user.id,
+        action: 'login_failed',
+        entityType: 'app_user',
+        entityId: user.id,
+        ip,
+        userAgent,
+        meta: { email: user.email, reason: 'invalid_password_change' },
+      });
+      throw new UnauthorizedException(
+        'That current password is not right.',
+      );
+    }
+
+    if (currentPassword === newPassword) {
+      throw new BadRequestException(
+        'Choose a different password than the one you already have.',
+      );
+    }
+
+    const publicUser = await this.usersService.resetPassword(
+      user.id,
+      newPassword,
+      user.id,
+      ip,
+      userAgent,
+      'user_password_change',
+    );
+
+    const fresh = await this.usersService.findById(user.id);
+    if (!fresh) throw new UnauthorizedException('Invalid credentials');
+
+    const payload: JwtPayload = {
+      sub: fresh.id,
+      role: fresh.role,
+      ver: fresh.tokenVersion,
+    };
+    const accessToken = this.jwtService.sign(payload);
+    return { accessToken, user: publicUser };
   }
 
   async logout(userId: string, ip?: string, userAgent?: string) {

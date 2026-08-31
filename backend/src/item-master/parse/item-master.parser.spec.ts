@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
 import * as ExcelJS from 'exceljs';
+import * as XLSX from 'xlsx';
 
 describe('ItemMasterParser', () => {
   it('should parse master code layout with formula resolution', async () => {
@@ -110,6 +111,68 @@ describe('ItemMasterParser', () => {
       // duplicate into extra.
       expect(item.extra).not.toHaveProperty('Brand');
       expect(item.extra).not.toHaveProperty('Catalogue No');
+    } finally {
+      fs.unlinkSync(tmpPath);
+    }
+  });
+
+  const MASTER_HEADERS = [
+    'Item Type',
+    'Catalogue No',
+    'Brand',
+    'Stock Item Name for Migration',
+    'Alias',
+    'Main Group',
+    'Sub Group',
+    'UOM',
+    'GST Rate',
+  ];
+  const MASTER_ROW = [
+    'Finished',
+    'CAT001',
+    'TEST_BRAND',
+    'Extra Column Item',
+    'ALIAS001',
+    'GROUP1',
+    'SUBGROUP1',
+    'PCS',
+    '18%',
+  ];
+
+  it('parses the same master-code layout from a CSV', async () => {
+    const csv =
+      MASTER_HEADERS.map((h) => `"${h}"`).join(',') +
+      '\n' +
+      MASTER_ROW.map((c) => `"${c}"`).join(',') +
+      '\n';
+    const tmpPath = path.join(os.tmpdir(), `csv-capture-${Date.now()}.csv`);
+    fs.writeFileSync(tmpPath, csv);
+    try {
+      const result = await parseItemMasterStream(tmpPath);
+      expect(result.recognizedSheets).toBe(1);
+      expect(result.acceptedRows).toBe(1);
+      expect(result.items[0].itemCode).toBe('ALIAS001');
+      expect(result.items[0].extra).toEqual({
+        'GST Rate': '18%',
+        'Item Type': 'Finished',
+      });
+    } finally {
+      fs.unlinkSync(tmpPath);
+    }
+  });
+
+  it('parses the same master-code layout from an .xls workbook', async () => {
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([MASTER_HEADERS, MASTER_ROW]);
+    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+    const tmpPath = path.join(os.tmpdir(), `xls-capture-${Date.now()}.xls`);
+    XLSX.writeFile(wb, tmpPath, { bookType: 'xls' });
+    try {
+      const result = await parseItemMasterStream(tmpPath);
+      expect(result.recognizedSheets).toBe(1);
+      expect(result.acceptedRows).toBe(1);
+      expect(result.items[0].brand).toBe('TEST_BRAND');
+      expect(result.items[0].itemCode).toBe('ALIAS001');
     } finally {
       fs.unlinkSync(tmpPath);
     }

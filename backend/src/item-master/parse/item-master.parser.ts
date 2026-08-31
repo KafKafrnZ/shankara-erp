@@ -1,17 +1,18 @@
 import * as ExcelJS from 'exceljs';
 import * as fs from 'fs';
+import * as XLSX from 'xlsx';
 import {
   ITEM_LAYOUT_REGISTRY,
   buildColumnMap,
   isPlaceholderValue,
 } from '../detect/item-layout.registry';
 import { ParsedItemRow } from '../detect/item-layout-detector.interface';
+import {
+  detectSpreadsheetKind,
+  type SpreadsheetKind,
+} from '../../common/spreadsheet-kind';
+import { decodeSpreadsheetText, parseCsvText } from './csv';
 
-// Every column the active layout doesn't already map to a fixed field
-// (item code, brand, main group, ...) goes here instead of being dropped —
-// a real "MAIN MASTER" export can carry ~48 columns and only ~10 have a
-// fixed home. Keyed by the column's own header text (not lowercased) so it
-// reads naturally wherever it's shown.
 function extractExtra(
   row: any[],
   headerRow: any[],
@@ -66,10 +67,10 @@ const unwrapCell = (v: any) => {
   return v;
 };
 
-export async function parseItemMasterStream(
-  filePath: string,
-): Promise<ParseResult> {
-  const result: ParseResult = {
+type SheetRow = { values: any[]; number: number };
+
+function emptyResult(): ParseResult {
+  return {
     totalSheets: 0,
     recognizedSheets: 0,
     skippedSheets: 0,
@@ -79,94 +80,162 @@ export async function parseItemMasterStream(
     skips: [],
     items: [],
   };
+}
 
+async function ingestSheet(
+  result: ParseResult,
+  sheetName: string,
+  rows: AsyncIterable<SheetRow>,
+): Promise<void> {
+  result.totalSheets++;
+
+  let headerRow: any[] | null = null;
+  let detector: (typeof ITEM_LAYOUT_REGISTRY)[0] | null = null;
+  let columnMap: Record<string, number> = {};
+  let rowsScanned = 0;
+
+  for await (const row of rows) {
+    const rowValues = row.values.map(unwrapCell);
+
+    if (!headerRow) {
+      rowsScanned++;
+      for (const det of ITEM_LAYOUT_REGISTRY) {
+        if (det.detect(rowValues)) {
+          detector = det;
+          break;
+        }
+      }
+      if (detector) {
+        headerRow = rowValues;
+        result.recognizedSheets++;
+        columnMap = buildColumnMap(headerRow);
+        continue;
+      }
+      if (rowsScanned >= 20) {
+        result.skippedSheets++;
+        result.skips.push({
+          sheetName,
+          sourceRowNo: null,
+          code: 'UNRECOGNIZED_SHEET',
+          message: `Sheet ${sheetName} did not match any known layout after 20 rows.`,
+        });
+        return;
+      }
+      continue;
+    }
+
+    result.totalRows++;
+    const parsed = detector!.parseRow(rowValues, columnMap);
+    if ('skip' in parsed && parsed.skip) {
+      result.skippedRows++;
+      result.skips.push({
+        sheetName,
+        sourceRowNo: row.number,
+        code: parsed.code,
+        message: parsed.reason,
+        raw: rowValues,
+      });
+    } else {
+      result.acceptedRows++;
+      result.items.push({
+        ...(parsed as ParsedItemRow),
+        extra: extractExtra(
+          rowValues,
+          headerRow,
+          columnMap,
+          detector!.knownHeaderKeys,
+        ),
+        layoutKey: detector!.key,
+        sourceRowNo: row.number,
+        sheetName,
+      });
+    }
+  }
+}
+
+async function* rowsFromMatrix(matrix: any[][]): AsyncIterable<SheetRow> {
+  for (let i = 0; i < matrix.length; i++) {
+    yield { values: matrix[i] ?? [], number: i + 1 };
+  }
+}
+
+async function parseXlsxStream(filePath: string): Promise<ParseResult> {
+  const result = emptyResult();
   const workbook = new ExcelJS.stream.xlsx.WorkbookReader(filePath, {
     worksheets: 'emit',
     hyperlinks: 'emit',
   });
 
   for await (const worksheetReader of workbook) {
-    result.totalSheets++;
     const sheetName =
-      (worksheetReader as any).name || `Sheet${result.totalSheets}`;
-
-    let headerRow: any[] | null = null;
-    let detector: (typeof ITEM_LAYOUT_REGISTRY)[0] | null = null;
-    let columnMap: Record<string, number> = {};
-    let isSkippedSheet = false;
-    let rowsScanned = 0;
-
-    for await (const row of worksheetReader) {
-      const rowValues = (
-        Array.isArray(row.values) ? row.values.slice(1) : []
-      ).map(unwrapCell);
-
-      if (!headerRow) {
-        rowsScanned++;
-
-        // Find matching detector
-        for (const det of ITEM_LAYOUT_REGISTRY) {
-          if (det.detect(rowValues)) {
-            detector = det;
-            break;
-          }
-        }
-
-        if (detector) {
-          headerRow = rowValues;
-          result.recognizedSheets++;
-          columnMap = buildColumnMap(headerRow);
-          continue; // Move to data rows
-        }
-
-        if (rowsScanned >= 20) {
-          isSkippedSheet = true;
-          result.skippedSheets++;
-          result.skips.push({
-            sheetName,
-            sourceRowNo: null,
-            code: 'UNRECOGNIZED_SHEET',
-            message: `Sheet ${sheetName} did not match any known layout after 20 rows.`,
-          });
-          break; // Skip rest of the sheet
-        }
-        continue; // Keep scanning
-      }
-
-      if (isSkippedSheet) {
-        break; // Double break
-      }
-
-      // Process data row
-      result.totalRows++;
-
-      const parsed = detector!.parseRow(rowValues, columnMap);
-      if ('skip' in parsed && parsed.skip) {
-        result.skippedRows++;
-        result.skips.push({
-          sheetName,
-          sourceRowNo: row.number,
-          code: parsed.code,
-          message: parsed.reason,
-          raw: rowValues,
-        });
-      } else {
-        result.acceptedRows++;
-        result.items.push({
-          ...(parsed as ParsedItemRow),
-          extra: extractExtra(
-            rowValues,
-            headerRow,
-            columnMap,
-            detector!.knownHeaderKeys,
-          ),
-          layoutKey: detector!.key,
-          sourceRowNo: row.number,
-          sheetName,
-        });
+      (worksheetReader as any).name || `Sheet${result.totalSheets + 1}`;
+    async function* excelRows(): AsyncIterable<SheetRow> {
+      for await (const row of worksheetReader) {
+        const values = Array.isArray(row.values) ? row.values.slice(1) : [];
+        yield { values, number: row.number };
       }
     }
+    await ingestSheet(result, sheetName, excelRows());
   }
-
   return result;
+}
+
+async function parseXlsFile(filePath: string): Promise<ParseResult> {
+  const result = emptyResult();
+  const workbook = XLSX.readFile(filePath, {
+    cellDates: true,
+    raw: false,
+  });
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName];
+    const matrix = XLSX.utils.sheet_to_json(sheet, {
+      header: 1,
+      defval: '',
+      raw: false,
+    }) as any[][];
+    await ingestSheet(result, sheetName, rowsFromMatrix(matrix));
+  }
+  return result;
+}
+
+async function parseCsvFile(filePath: string): Promise<ParseResult> {
+  const result = emptyResult();
+  const buffer = fs.readFileSync(filePath);
+  const matrix = parseCsvText(decodeSpreadsheetText(buffer));
+  await ingestSheet(result, 'Sheet1', rowsFromMatrix(matrix));
+  return result;
+}
+
+function sniffFile(filePath: string): SpreadsheetKind | null {
+  const fd = fs.openSync(filePath, 'r');
+  try {
+    const buf = Buffer.alloc(8192);
+    const n = fs.readSync(fd, buf, 0, 8192, 0);
+    return detectSpreadsheetKind(buf.subarray(0, n));
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+export async function parseItemMasterFile(
+  filePath: string,
+  kind?: SpreadsheetKind | null,
+): Promise<ParseResult> {
+  const sniffed = kind ?? sniffFile(filePath);
+  switch (sniffed) {
+    case 'xls':
+      return parseXlsFile(filePath);
+    case 'csv':
+      return parseCsvFile(filePath);
+    case 'xlsx':
+    default:
+      return parseXlsxStream(filePath);
+  }
+}
+
+/** @deprecated alias — same as parseItemMasterFile, kept for existing tests */
+export async function parseItemMasterStream(
+  filePath: string,
+): Promise<ParseResult> {
+  return parseItemMasterFile(filePath);
 }

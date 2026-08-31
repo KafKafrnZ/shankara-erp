@@ -2,6 +2,8 @@
 
 Everything in `ops/` (backups, TLS) is built to work once these are decided, but none of them are things code can decide. This is the checklist to take to whoever manages the office's physical setup and network — could be Dante, could be someone else, but it's not an engineering task.
 
+Walk these with the IT head **before** following [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). Several of them block later steps in that runbook.
+
 1. **Where do backups physically live?** `ops/backup.sh` writes to `BACKUP_DIR`, which defaults to the same disk as the live database — meaning a disk failure destroys the system and every backup at once. Needs a second, physically separate location: a NAS, an external drive, another machine, anything not sharing a disk (or ideally a building) with the server. Once chosen, it's one environment variable.
 
 2. **Is the uploads folder on redundant storage?** Same risk, different data — `backend/var/uploads` holds every original file anyone's ever uploaded. Being included in the backup script means it's recoverable after a mistake, but a RAID array or NAS-backed disk would mean it survives a live failure without needing a restore at all. Worth asking whatever the office already has before buying anything.

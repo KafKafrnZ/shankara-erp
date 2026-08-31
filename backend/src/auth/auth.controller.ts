@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { Public } from './public.decorator';
 import { AuthUser } from './auth-user';
 import { AUTH_COOKIE_NAME, authCookieOptions } from './auth-cookie';
@@ -68,5 +69,30 @@ export class AuthController {
   @Get('me')
   getProfile(@Req() req: AuthedRequest) {
     return req.user;
+  }
+
+  @Post('password')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  async changePassword(
+    @Body() dto: ChangePasswordDto,
+    @Req() req: AuthedRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { accessToken, user } = await this.authService.changePassword(
+      req.user.id,
+      dto.currentPassword,
+      dto.newPassword,
+      req.ip,
+      req.headers['user-agent'],
+    );
+    // Password change bumps token_version, which would 401 the cookie we
+    // just used — re-issue it with the new version so they stay signed in.
+    const { exp } = this.jwtService.decode<{ exp: number }>(accessToken);
+    res.cookie(AUTH_COOKIE_NAME, accessToken, {
+      ...authCookieOptions(this.isProd),
+      maxAge: exp * 1000 - Date.now(),
+    });
+    return { accessToken, user };
   }
 }

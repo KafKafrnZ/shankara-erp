@@ -19,6 +19,7 @@ export const AUDIT_ACTIONS = [
   'user_create',
   'user_update',
   'user_password_reset',
+  'user_password_change',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

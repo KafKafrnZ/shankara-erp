@@ -24,7 +24,7 @@ import { SourceFile } from '../storage/entities/source-file.entity';
 import type { ObjectStore } from '../storage/object-store';
 import { OBJECT_STORE } from '../storage/object-store';
 import { AuditService } from '../audit/audit.service';
-import { parseItemMasterStream } from './parse/item-master.parser';
+import { parseItemMasterFile } from './parse/item-master.parser';
 import { ItemSearchService } from './item-search.service';
 import { ManualItemDto } from './dto/manual-item.dto';
 
@@ -299,13 +299,13 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
       );
       const tmpPath = path.join(
         '/tmp',
-        `item_parse_${batchId}_${Date.now()}.xlsx`,
+        `item_parse_${batchId}_${Date.now()}`,
       );
-      let parsed: Awaited<ReturnType<typeof parseItemMasterStream>>;
+      let parsed: Awaited<ReturnType<typeof parseItemMasterFile>>;
       try {
         const writeStream = fs.createWriteStream(tmpPath);
         await pipeline(objectStream, writeStream);
-        parsed = await parseItemMasterStream(tmpPath);
+        parsed = await parseItemMasterFile(tmpPath);
       } finally {
         if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
       }

@@ -19,11 +19,9 @@ import { Throttle } from '@nestjs/throttler';
 import { Roles } from '../auth/roles.decorator';
 import { ItemMasterService } from './item-master.service';
 import { ParseIdPipe } from '../common/parse-id.pipe';
-import { isXlsxSignature } from '../common/is-xlsx';
+import { matchUpload, UPLOAD_ERROR } from '../common/spreadsheet-kind';
 
 type AuthedRequest = Request & { user: any };
-
-const ITEM_UPLOAD_EXTENSIONS = ['.xlsx'];
 
 @Controller('item-uploads')
 export class ItemUploadsController {
@@ -44,20 +42,11 @@ export class ItemUploadsController {
       throw new BadRequestException('No file provided');
     }
 
-    // Without this, any file at all (a PDF, a screenshot, a .txt) was hashed,
-    // stored and queued, only to fail deep inside the spreadsheet parser and
-    // surface to the user as "invalid signature: 0x73696874". Reject it here,
-    // in words that say what to do about it.
-    const ext = file.originalname
-      .slice(file.originalname.lastIndexOf('.'))
-      .toLowerCase();
-    if (
-      !ITEM_UPLOAD_EXTENSIONS.includes(ext) ||
-      !isXlsxSignature(file.buffer)
-    ) {
-      throw new BadRequestException(
-        `"${file.originalname}" isn't a spreadsheet we can read. Please upload an Excel .xlsx workbook exported from Tally.`,
-      );
+    // Filename and bytes have to agree (.xlsx that isn't a ZIP, .csv that
+    // is actually a PDF, a screenshot renamed to .xls). Reject it here in
+    // words that say what to do about it, before anything is stored.
+    if (!matchUpload(file.originalname, file.buffer)) {
+      throw new BadRequestException(`"${file.originalname}" ${UPLOAD_ERROR}`);
     }
 
     const stream = Readable.from(file.buffer);

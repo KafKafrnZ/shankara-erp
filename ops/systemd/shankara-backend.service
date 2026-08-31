@@ -1,0 +1,27 @@
+[Unit]
+Description=Shankara ERP backend (NestJS)
+Documentation=file:///opt/shankara-erp/docs/DEPLOYMENT.md
+After=network.target docker.service
+Requires=docker.service
+# Postgres/pgbouncer come up via docker-compose restart: unless-stopped.
+# The backend will retry on failure if they are a few seconds late.
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/shankara-erp/backend
+ExecStart=/usr/bin/node dist/main.js
+Restart=on-failure
+RestartSec=5
+# Loads NODE_ENV, DATABASE_*, JWT_SECRET, TRUST_PROXY, CORS_ORIGIN, etc.
+# Nest also reads backend/.env from WorkingDirectory; keep both in sync.
+EnvironmentFile=/opt/shankara-erp/backend/.env
+User=shankara
+Group=shankara
+# Hardening: no extra privileges, private /tmp, no new privileges.
+NoNewPrivileges=true
+PrivateTmp=true
+# The process must be able to write uploaded .xlsx files here.
+ReadWritePaths=/opt/shankara-erp/backend/var
+
+[Install]
+WantedBy=multi-user.target

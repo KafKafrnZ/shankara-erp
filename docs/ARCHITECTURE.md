@@ -78,7 +78,8 @@ Three roles:
   multiple backend instances), not wired into anything today.
 - **TLS/reverse proxy**: Caddy, config at `ops/Caddyfile`, for an on-prem
   LAN deployment with no public domain (internal CA, one-time cert trust
-  per office device). See `ops/README.md`.
+  per office device). First-time install sequence: [`DEPLOYMENT.md`](DEPLOYMENT.md).
+  Day-to-day: [`OPS.md`](OPS.md). Caddy detail: `ops/README.md`.
 
 ---
 
@@ -147,16 +148,19 @@ purposes depends on which layout produced the row — see
 ## 4. Catalog upload → publish pipeline
 
 1. **Upload** (`POST /api/item-uploads`, steward only) — rejected before
-   anything is stored or queued unless the filename ends `.xlsx` **and**
-   the file's first bytes are a real ZIP local file header
-   (`backend/src/common/is-xlsx.ts` — `.xlsx` is a ZIP archive), so a
-   renamed/malformed file gets the same plain-language 400 either way
-   instead of failing deep inside the parser. Once it passes, the file is
-   hashed, stored in the object store, and a batch row is created with
-   status `processing`. A `pg-boss` job (`item-master-parse`) is enqueued
-   and the request returns immediately (`202`).
+   anything is stored or queued unless the filename extension and the
+   file's bytes agree (`backend/src/common/spreadsheet-kind.ts`):
+   `.xlsx` must be a ZIP local file header, `.xls` must be an OLE
+   Compound File, `.csv` must be text with a comma/tab/semicolon. A
+   renamed/malformed file gets the same plain-language 400 instead of
+   failing deep inside the parser. Once it passes, the file is hashed,
+   stored in the object store, and a batch row is created with status
+   `processing`. A `pg-boss` job (`item-master-parse`) is enqueued and
+   the request returns immediately (`202`).
 2. **Parse** (background job, `ItemMasterService.processBatchJob`) —
-   streams the workbook via ExcelJS, tries each of 3 layout detectors in
+   `.xlsx` is streamed via ExcelJS; `.xls` is read via SheetJS; `.csv`
+   is decoded (UTF-8 / UTF-16 LE / BOM) and split on the detected
+   delimiter. All three then run the same 3 layout detectors in
    order (`backend/src/item-master/detect/item-layout.registry.ts`):
    `sap_item_master_v1`, `master_code_v1`, `cp_sani_others_v1`. Whichever
    one matches the header row parses every data row. Anything the matched
@@ -287,6 +291,13 @@ use, rather than a parallel "just UPDATE the row" path:
 
 ## 8. Auth, roles, and audit
 
+- **Change own password** — `POST /api/auth/password` (`currentPassword`,
+  `newPassword`, min 8 chars). Any signed-in role. Verifies the current
+  password, hashes the new one, bumps `tokenVersion` (so other sessions
+  die), re-issues the auth cookie so *this* session stays signed in.
+  Audited as `user_password_change`. There is still no email-based
+  forgot-password; a locked-out user needs a steward on the People
+  screen (`user_password_reset`).
 - **JWT** issued on `POST /api/auth/login`. The browser SPA authenticates
   via an `httpOnly`, `SameSite=Strict`, `Secure`-in-production cookie
   (`sb_token`, set by `AuthController.login`/cleared by `.logout`) — the
@@ -311,6 +322,7 @@ use, rather than a parallel "just UPDATE the row" path:
   `roles.guard.ts`) on any endpoint that needs it; enforced globally via
   `APP_GUARD` alongside `JwtAuthGuard`. `@Public()` opts a route out of
   auth entirely (only `/api/health` and `/api/auth/login` use it).
+  `/api/auth/password` requires a signed-in user.
 - **Rate limiting**: global default **100 requests/minute per IP**
   (`ThrottlerModule` in `app.module.ts`), tighter on login (10/min) and
   item uploads (20/min). This is per-IP, not per-user — see §11 for what
@@ -320,7 +332,8 @@ use, rather than a parallel "just UPDATE the row" path:
   `login`, `login_failed`, `logout`, `item_upload`, `item_publish`,
   `item_hold`, `item_retry`, `item_manual_create`, `item_manual_update`,
   `item_manual_delete`, `item_collision_warn`, `job_status_override_warn`,
-  `user_create`, `user_update`, `user_password_reset`. Logging an action
+  `user_create`, `user_update`, `user_password_reset`,
+  `user_password_change`. Logging an action
   not in this list throws — this whitelist has to be updated whenever a
   new audited action is added.
 - **Security headers**: `helmet()` is applied globally. CORS origin is
@@ -393,7 +406,10 @@ the machine this was tested on, which also runs everything else at once).
   Caddy forwards `X-Forwarded-For` by default, the backend just needs
   `TRUST_PROXY=true` when it's actually behind a real proxy, and *only*
   then.)
-- No self-service password recovery for a locked-out steward.
+- No email-based forgot-password for a locked-out user. Anyone who can
+  still sign in can change their own password (`POST /api/auth/password`
+  / the Password page). A locked-out user still needs another steward
+  on the People screen — keep two steward accounts.
 
 **Reliability / ops**
 - Backups exist and work (`ops/backup.sh` / `restore.sh`, live-tested) but

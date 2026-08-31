@@ -187,6 +187,38 @@ describe('Auth (e2e)', () => {
     expect(res.body.email).toBe('steward@shankara.local');
   });
 
+  it('steward upload accepts a real CSV and rejects a .txt', async () => {
+    const path = require('path');
+    const fs = require('fs');
+    const os = require('os');
+    const csv =
+      'Catalogue No,Brand,Stock Item Name for Migration,Alias,Main Group,Sub Group,UOM\n' +
+      `C${Date.now()},Brand,Name,A${Date.now()},G,S,PCS\n`;
+    const csvPath = path.join(os.tmpdir(), `e2e-upload-${Date.now()}.csv`);
+    fs.writeFileSync(csvPath, csv);
+    try {
+      const ok = await request(app.getHttpServer())
+        .post('/api/item-uploads')
+        .set('Authorization', `Bearer ${stewardToken}`)
+        .attach('file', csvPath);
+      expect([200, 202]).toContain(ok.status);
+
+      const txtPath = path.join(os.tmpdir(), `e2e-notes-${Date.now()}.txt`);
+      fs.writeFileSync(txtPath, 'hello');
+      try {
+        await request(app.getHttpServer())
+          .post('/api/item-uploads')
+          .set('Authorization', `Bearer ${stewardToken}`)
+          .attach('file', txtPath)
+          .expect(400);
+      } finally {
+        fs.unlinkSync(txtPath);
+      }
+    } finally {
+      fs.unlinkSync(csvPath);
+    }
+  });
+
   it('logout clears the cookie, and the cleared cookie no longer authenticates', async () => {
     const agent = request.agent(app.getHttpServer());
     await agent
@@ -210,5 +242,58 @@ describe('Auth (e2e)', () => {
     // belt and suspenders, not just relying on the browser having
     // discarded it.
     await agent.get('/api/auth/me').expect(401);
+  });
+
+  // Last: mutates the finance seed user's password (and token_version).
+  it('signed-in user can change their own password and stay signed in via a new cookie', async () => {
+    const agent = request.agent(app.getHttpServer());
+    await agent
+      .post('/api/auth/login')
+      .send({ email: 'finance@shankara.local', password: financePassword })
+      .expect(200);
+
+    await agent
+      .post('/api/auth/password')
+      .send({ currentPassword: 'wrong', newPassword: 'newpass-e2e-1' })
+      .expect(401);
+
+    await agent
+      .post('/api/auth/password')
+      .send({ currentPassword: financePassword, newPassword: 'short' })
+      .expect(400);
+
+    const changed = await agent
+      .post('/api/auth/password')
+      .send({
+        currentPassword: financePassword,
+        newPassword: 'newpass-e2e-99',
+      })
+      .expect(200);
+    expect(changed.body.user.email).toBe('finance@shankara.local');
+
+    await agent.get('/api/auth/me').expect(200);
+
+    await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ email: 'finance@shankara.local', password: financePassword })
+      .expect(401);
+
+    await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({
+        email: 'finance@shankara.local',
+        password: 'newpass-e2e-99',
+      })
+      .expect(200);
+
+    // Put the seed password back so later suites in the same scratch DB
+    // (if any) still work.
+    await agent
+      .post('/api/auth/password')
+      .send({
+        currentPassword: 'newpass-e2e-99',
+        newPassword: financePassword,
+      })
+      .expect(200);
   });
 });

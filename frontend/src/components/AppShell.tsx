@@ -133,6 +133,9 @@ export function AppShell() {
           }} title="Toggle Theme">
             🌓
           </button>
+          <NavLink to="/account" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
+            Password
+          </NavLink>
           <button type="button" className="btn btn-ghost" onClick={() => void onLogout()}>
             Logout
           </button>

@@ -11,7 +11,7 @@ export function CatalogUploadPage() {
   return (
     <div className="upload-page">
       <h1 className="page-title">Upload items</h1>
-      <p className="muted page-lead">Item list from Tally. Excel .xlsx only.</p>
+      <p className="muted page-lead">Item list from Tally. Excel (.xlsx or .xls) or CSV.</p>
       <LiveSourcePane refreshKey={batchKey} />
 
       <ItemUploadFlow

@@ -1,0 +1,16 @@
+[Unit]
+Description=Shankara ERP backup (Postgres dump + uploads archive)
+Documentation=file:///opt/shankara-erp/docs/DEPLOYMENT.md
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/shankara-erp
+# CHANGE THIS to a disk that is not the same physical drive as Postgres.
+# A NAS mount, USB disk, or second machine. Same-disk backups die with the
+# server. See OFFICE_DECISIONS.md item 1.
+Environment=BACKUP_DIR=/mnt/nas/shankara-backups
+ExecStart=/opt/shankara-erp/ops/backup.sh
+# Needs docker exec into shankara-postgres. Running as root is the simple
+# path; alternatively run as a user in the docker group.

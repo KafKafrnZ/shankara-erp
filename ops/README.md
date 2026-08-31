@@ -3,6 +3,12 @@
 Infra/ops tooling — not application code. Everything here is meant to run on the
 real deployment (the on-prem office server), not a dev laptop.
 
+**First-time install is not this file.** Hand IT
+[`docs/DEPLOYMENT.md`](../docs/DEPLOYMENT.md). That runbook sequences this
+directory (Caddy, backups, the systemd units under `systemd/`) plus the
+office decisions in [`OFFICE_DECISIONS.md`](../OFFICE_DECISIONS.md). This
+README is the detail behind those steps.
+
 ## Backups
 
 `backup.sh` dumps the Postgres database and archives the uploaded-file store.
