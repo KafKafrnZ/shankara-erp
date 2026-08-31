@@ -14,6 +14,9 @@ body,
 
 html {
   color-scheme: light;
+  /* Tracks the CSS-pixel viewport, not the physical panel — Windows 125%/
+     150% scale and a 1366 laptop then share one density with 1920 native. */
+  font-size: clamp(15px, 0.22vw + 13.6px, 16.5px);
 }
 
 body {
@@ -21,11 +24,12 @@ body {
   font-family: var(--font-ui);
   /* Bumped from 14px per the non-tech/elderly-readability pass — NNG's
      research on older users converges around a 16px floor for body text. */
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1.5;
   color: var(--ink);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
 }
 
 a {
@@ -72,6 +76,7 @@ button {
 
 .app-shell {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
 }
@@ -83,9 +88,13 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
+  flex-wrap: wrap;
+  row-gap: 8px;
+  gap: var(--header-gap);
   min-height: 58px;
-  padding: 8px 20px;
+  padding: 8px var(--space-page-x);
+  padding-left: max(var(--space-page-x), env(safe-area-inset-left));
+  padding-right: max(var(--space-page-x), env(safe-area-inset-right));
   background: var(--header-bg);
   border-bottom: 3px solid var(--sb-red);
   backdrop-filter: blur(8px);
@@ -95,7 +104,9 @@ button {
 .header-right {
   display: flex;
   align-items: center;
-  gap: 14px;
+  flex-wrap: wrap;
+  row-gap: 8px;
+  gap: var(--header-gap);
 }
 
 .logo-chip {
@@ -223,7 +234,10 @@ button {
      the whole page wider than the viewport instead of scrolling inside its
      own .table-scroll container. */
   min-width: 0;
-  padding: 24px 28px 48px;
+  padding: var(--space-page-y) var(--space-page-x) 64px;
+  padding-left: max(var(--space-page-x), env(safe-area-inset-left));
+  padding-right: max(var(--space-page-x), env(safe-area-inset-right));
+  padding-bottom: max(64px, env(safe-area-inset-bottom));
   /* A soft wash bleeding down from the red header bar — background alone
      (no z-index) so it stays in the same paint layer as the DotField
      canvas trick above, not a new stacking context. Fades out well before
@@ -396,19 +410,19 @@ th.num {
 
 .login-page {
   min-height: 100vh;
+  min-height: 100dvh;
   background: var(--sb-ink);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 40px;
+  padding: clamp(20px, 6vh, 48px) var(--space-page-x);
 }
 
 .login-card {
   /* Same paint-order fix as .app-main, and same reason for leaving
      z-index alone — see the note there. */
   position: relative;
-  width: 400px;
-  max-width: 100%;
+  width: min(25rem, 100%);
   color: var(--sb-white);
 }
 
@@ -505,35 +519,38 @@ th.num {
 /* ——— Catalog: persistent search header ——— */
 
 .catalog-page {
-  max-width: 1180px;
+  width: 100%;
+  max-width: var(--page-max);
   margin: 0 auto;
 }
 
 .catalog-header {
   display: flex;
   align-items: center;
-  gap: 20px;
+  flex-wrap: wrap;
+  gap: var(--space-gap);
   margin-bottom: 8px;
 }
 
 .catalog-title {
-  font-size: 20px;
+  font-size: clamp(1.1rem, 0.4vw + 1rem, 1.4rem);
   font-weight: 700;
   letter-spacing: -0.01em;
   margin: 0;
-  white-space: nowrap;
 }
 
 .catalog-search-form {
   display: flex;
-  flex: 1;
+  flex: 1 1 16rem;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .catalog-search-input-wrap {
   flex: 1;
-  max-width: 520px;
+  min-width: 0;
+  max-width: 40rem;
 }
 
 .catalog-hint {
@@ -750,9 +767,9 @@ th.num {
 }
 
 .filter-bar-field {
-  min-width: 160px;
-  max-width: 240px;
-  flex: 1 1 160px;
+  min-width: min(10rem, 100%);
+  max-width: 18rem;
+  flex: 1 1 12rem;
 }
 
 .filter-bar-field select {
@@ -834,8 +851,9 @@ th.num {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 16px;
-  padding: 12px 24px;
+  gap: var(--space-gap);
+  padding: 12px var(--space-page-x);
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
   background: var(--sb-ink);
   color: var(--sb-white);
   box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.25);
@@ -944,7 +962,7 @@ th.num {
 .lines-table th,
 .lines-table td {
   border-bottom: 1px solid var(--line);
-  padding: 10px 12px;
+  padding: clamp(8px, 0.6vw + 6px, 14px) clamp(8px, 0.5vw + 6px, 16px);
   text-align: left;
   vertical-align: top;
 }
@@ -1124,8 +1142,13 @@ mark.search-hl {
   opacity: 0.55;
 }
 
-.has-drawer {
-  padding-right: 580px;
+/* Only shove the catalog aside for the drawer when the leftover column
+   is still wide enough to search in. Below that the drawer overlays. */
+@media (min-width: 1280px) {
+  .catalog-page.has-drawer {
+    max-width: none;
+    margin-right: var(--drawer-width);
+  }
 }
 
 .empty-state {
@@ -1169,9 +1192,10 @@ mark.search-hl {
   position: fixed;
   top: 0;
   right: 0;
-  width: 560px;
+  width: var(--drawer-width);
   max-width: 100%;
-  height: 100vh;
+  height: 100%;
+  height: 100dvh;
   background: var(--surface);
   border-left: 4px solid var(--accent);
   box-shadow: -16px 0 40px rgba(0, 0, 0, 0.35);
@@ -1239,7 +1263,8 @@ mark.search-hl {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 6px;
-  max-width: 220px;
+  flex: 1 1 12rem;
+  min-width: 0;
 }
 
 .drawer-actions .btn-ghost {
@@ -1254,7 +1279,7 @@ mark.search-hl {
 
 .meta-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(min(12rem, 100%), 1fr));
   gap: 12px 16px;
   margin: 0 0 18px;
 }
@@ -1276,7 +1301,7 @@ mark.search-hl {
 
 .item-edit-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(min(12rem, 100%), 1fr));
   gap: 14px 16px;
   margin-bottom: 20px;
 }
@@ -1336,12 +1361,14 @@ mark.search-hl {
 /* ——— Upload ——— */
 
 .upload-page {
-  max-width: 960px;
+  width: 100%;
+  max-width: min(60rem, var(--page-max));
+  margin-inline: auto;
 }
 
 .upload-form {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr));
   gap: 12px 16px;
   margin-bottom: 16px;
   align-items: end;
@@ -1394,6 +1421,47 @@ mark.search-hl {
   align-items: center;
   gap: 10px;
   margin-bottom: 12px;
+}
+
+.alias-review {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+}
+
+.alias-review h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.alias-review-lead {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.alias-review dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(10rem, 100%), 1fr));
+  gap: 8px 16px;
+  margin: 0;
+}
+
+.alias-review dt {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.alias-review dd {
+  margin: 2px 0 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .batch-head h2,
@@ -1454,29 +1522,29 @@ mark.search-hl {
 
 /* ——— Responsive ——— */
 
-/* A 1366×768 laptop is the reported problem case — with vouchers gone and
-   filters off the side rail, the header and results already fit there
-   comfortably. This breakpoint is the safety net for anything narrower: a
-   non-maximized window, a smaller/older laptop panel, a browser at >100%
-   zoom, or a side-by-side split screen. */
-@media (max-width: 1024px) {
-  .app-header {
-    flex-wrap: wrap;
-    row-gap: 8px;
-    min-height: 0;
-    padding: 10px 16px;
-  }
-
-  .header-left,
-  .header-right {
-    flex-wrap: wrap;
-    row-gap: 8px;
-  }
-
-  /* Least essential piece of the header — the live-file pane already says
-     how fresh the data is in plain language ("made live 21 Aug"). */
+/* Header is the densest strip. Drop the least-needed chrome first so a
+   1366 laptop or a 1920 panel at 125%/150% Windows scale doesn't wrap
+   "Find item" under the logo. The live-file pane already says how fresh
+   the data is. */
+@media (max-width: 1400px) {
   .as-of {
     display: none;
+  }
+}
+
+@media (max-width: 1100px) {
+  .header-wordmark {
+    display: none;
+  }
+
+  .pager {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 1024px) {
+  .app-header {
+    min-height: 0;
   }
 }
 
@@ -1487,27 +1555,42 @@ mark.search-hl {
   }
 
   .chooser-panel {
-    min-height: 260px;
+    min-height: min(42vh, 320px);
   }
 
   .chooser-divider {
     width: 100%;
     height: 3px;
   }
+
+  .user-meta {
+    display: none;
+  }
+
+  .login-page {
+    padding: var(--space-page-y) var(--space-page-x);
+  }
 }
 
 @media (max-width: 640px) {
   .filter-bar-field {
-    min-width: 130px;
-  }
-
-  .catalog-header {
-    flex-wrap: wrap;
-    row-gap: 10px;
+    min-width: min(100%, 10rem);
+    max-width: none;
   }
 
   .catalog-search-form {
     flex-wrap: wrap;
+    flex-basis: 100%;
+  }
+
+  .item-edit-grid,
+  .meta-grid,
+  .upload-form {
+    grid-template-columns: 1fr;
+  }
+
+  .pager-btns .btn {
+    min-width: 0;
   }
 }
 
@@ -1576,6 +1659,7 @@ mark.search-hl {
 .chooser-page {
   display: flex;
   min-height: 100vh;
+  min-height: 100dvh;
   width: 100%;
 }
 
@@ -1611,8 +1695,8 @@ mark.search-hl {
 .chooser-panel-content {
   position: relative;
   z-index: 1;
-  max-width: 380px;
-  padding: 0 40px;
+  max-width: min(24rem, 100%);
+  padding: 0 clamp(20px, 4vw, 40px);
   text-align: center;
   color: #fff;
   display: flex;
@@ -1623,7 +1707,7 @@ mark.search-hl {
 }
 
 .chooser-panel-content h2 {
-  font-size: 30px;
+  font-size: clamp(1.4rem, 1.2vw + 1.1rem, 2rem);
   font-weight: 700;
   margin: 8px 0 0;
   letter-spacing: -0.01em;
@@ -1692,7 +1776,7 @@ mark.search-hl {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 32px 24px 40px;
+  padding: clamp(16px, 4vh, 40px) var(--space-page-x);
   border-top: 3px solid var(--sb-red);
   animation: howto-overlay-in 420ms ease both;
 }
@@ -1841,7 +1925,7 @@ mark.search-hl {
   font-family: var(--font-editorial);
   font-style: italic;
   font-weight: 600;
-  font-size: 34px;
+  font-size: clamp(1.5rem, 1.4vw + 1.1rem, 2.15rem);
   line-height: 1.15;
   letter-spacing: -0.02em;
 }
