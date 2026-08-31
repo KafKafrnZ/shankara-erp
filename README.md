@@ -38,7 +38,6 @@ Seed emails: `steward@shankara.local`, `finance@shankara.local`,
 | `docs/DEPLOYMENT.md` | First-time office-server go-live runbook (for IT) |
 | `docs/OPS.md` | Standing ops reference once it is live |
 | `docs/USER_GUIDE.md` | Plain-language guide for catalog users |
-| `docs/history/` | Archived per-session build logs from earlier phases |
 | `ops/` | Backup/restore, Caddy TLS config, systemd units — see `ops/README.md` |
 | `OFFICE_DECISIONS.md` | Physical/network decisions the code can't make for you |
 

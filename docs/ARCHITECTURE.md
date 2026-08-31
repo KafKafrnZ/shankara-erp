@@ -4,12 +4,11 @@
 disagree, the code wins — file an update to this doc, don't trust this over
 a fresh read of the source.
 
-This document replaced a pile of superseded phase/brief docs (accounting
-day-book work orders for a module that's since been removed entirely — see
-git history if you need that record). It covers the system as it exists
-today: an item-catalog search, filter, and CRUD tool. Nothing here describes
-vouchers, day books, or Tally transaction ingest — that subsystem was fully
-retired.
+This document is the system as it exists today: an item-catalog search,
+filter, and CRUD tool. Older per-session briefs and the retired
+voucher/day-book work live only in git history if you ever need that
+record. Nothing here describes vouchers, day books, or Tally transaction
+ingest.
 
 ---
 
