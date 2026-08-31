@@ -27,6 +27,12 @@ import { AuditService } from '../audit/audit.service';
 import { parseItemMasterFile } from './parse/item-master.parser';
 import { ItemSearchService } from './item-search.service';
 import { ManualItemDto } from './dto/manual-item.dto';
+import {
+  EMPTY_MERGE_SUMMARY,
+  dedupeByAlias,
+  normalizeAlias,
+  type MergeSummary,
+} from './item-identity';
 
 interface FingerprintableItem {
   layoutKey: string;
@@ -316,6 +322,7 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
       batch.totalRows = parsed.totalRows;
       batch.acceptedRows = parsed.acceptedRows;
       batch.skippedRows = parsed.skippedRows;
+      batch.extraHeaders = parsed.extraHeaders;
 
       // Retry of a stuck/rejected batch re-runs this job against the same
       // batch id. Drop this batch's previous rows/skips first so we don't
@@ -327,94 +334,146 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
         batchId: String(batchId),
       });
 
-      if (parsed.skips.length > 0) {
-        const skips = parsed.skips.map((s) =>
+      const extraSkips: ItemMasterSkip[] = [];
+
+      // Alias is the merge identity. Same Alias twice in this file (any
+      // casing/spacing) — keep the last row, record the earlier ones so
+      // the steward can see them before publish instead of silently
+      // folding them the way item_code last-wins used to.
+      const { kept: dedupedItems, duplicates } = dedupeByAlias(parsed.items);
+      for (const dup of duplicates) {
+        extraSkips.push(
           this.skipRepo.create({
             batchId: batch.id,
-            sheetName: s.sheetName,
-            sourceRowNo: s.sourceRowNo,
-            code: s.code,
-            message: s.message,
-            raw: s.raw,
+            sheetName: dup.item.sheetName,
+            sourceRowNo: dup.item.sourceRowNo,
+            code: dup.byAlias ? 'DUPLICATE_ALIAS' : 'DUPLICATE_ITEM_CODE',
+            message: dup.byAlias
+              ? `Alias "${dup.display}" appears more than once in this file. Kept the last row (sheet ${dup.keptItem.sheetName}, row ${dup.keptItem.sourceRowNo}); this earlier row was not merged.`
+              : `Item code "${dup.display}" appears more than once in this file. Kept the last row; this earlier row was not merged.`,
+            raw: {
+              alias: dup.item.alias ?? null,
+              itemCode: dup.item.itemCode,
+              keptSourceRowNo: dup.keptItem.sourceRowNo,
+            },
           }),
         );
-        // Chunked, not one bulk insert: a real file can produce tens of
-        // thousands of skip rows (~19,700 for the real MAIN MASTER sample
-        // file), and one unchunked multi-row INSERT for that many rows
-        // exceeds Postgres's 65,535-bound-parameters-per-query limit —
-        // confirmed live: this failed with "bind message has 52490
-        // parameter formats but 0 parameters" before this fix.
-        await queryRunner.manager.save(skips, { chunk: 1000 });
       }
 
-      // --- Batched insert path ---
-      // The original version of this loop did up to 3 sequential queries
-      // PER ROW (a SELECT to find the current version, an UPDATE to
-      // supersede it, an INSERT for the new one) — for the real 174,553-row
-      // MAIN MASTER file that's up to ~520,000 sequential round-trips in one
-      // transaction, which took several minutes and comfortably exceeded
-      // the frontend's 2-minute "still processing" timeout on a perfectly
-      // healthy upload. This does the same work in ~3 queries total (plus
-      // one small INSERT per chunk), not 3 per row.
-      //
-      // Closing the previous live row is deferred until publish. Doing it
-      // here made those items vanish from search the moment a file was
-      // uploaded — before anyone accepted it — because search only shows
-      // published current rows.
-      //
-      // Step 1: if the same item_code appears more than once in this file,
-      // keep only the last occurrence. This matches the net effect of the
-      // original row-by-row code — each later occurrence in the same file
-      // would immediately supersede the previous one before either reached
-      // a caller — it just no longer creates a throwaway intermediate row
-      // for a "version" that only existed for milliseconds within a single
-      // import. Version history is about change across separate uploads,
-      // not sub-second flicker inside one.
-      const dedupedByCode = new Map<string, (typeof parsed.items)[number]>();
-      for (const item of parsed.items) {
-        dedupedByCode.set(item.itemCode, item);
-      }
-      const dedupedItems = [...dedupedByCode.values()];
+      const itemCodes = [
+        ...new Set(dedupedItems.map((i) => i.itemCode).filter(Boolean)),
+      ];
+      const aliases = [
+        ...new Set(
+          dedupedItems
+            .map((i) => normalizeAlias(i.alias))
+            .filter((a): a is string => Boolean(a)),
+        ),
+      ];
 
-      // Step 2: one query to fetch every currently-live *published* row for
-      // every item code in this file, instead of one SELECT per row.
-      // `= ANY(:codes)` binds the whole list as a single array parameter —
-      // unlike TypeORM's `In()` operator, which binds one parameter per
-      // value and would itself blow past Postgres's 65,535-parameter limit
-      // for a file with more than ~65k distinct codes.
-      const itemCodes = dedupedItems.map((i) => i.itemCode);
-      const currentRows =
-        itemCodes.length > 0
-          ? await queryRunner.manager
-              .createQueryBuilder(ItemMasterRow, 'row')
-              .innerJoin('row.batch', 'batch')
-              .where('row.item_code = ANY(:codes)', { codes: itemCodes })
-              .andWhere('row.valid_to IS NULL')
-              .andWhere("batch.status = 'published'")
-              .getMany()
-          : [];
-      const currentByCode = new Map(currentRows.map((r) => [r.itemCode, r]));
+      const currentByCode = new Map<string, ItemMasterRow>();
+      const currentByAlias = new Map<string, ItemMasterRow | 'ambiguous'>();
+
+      if (itemCodes.length > 0) {
+        const byCode = await queryRunner.manager
+          .createQueryBuilder(ItemMasterRow, 'row')
+          .innerJoin('row.batch', 'batch')
+          .where('row.item_code = ANY(:codes)', { codes: itemCodes })
+          .andWhere('row.valid_to IS NULL')
+          .andWhere('row.is_deleted = false')
+          .andWhere("batch.status = 'published'")
+          .getMany();
+        for (const row of byCode) currentByCode.set(row.itemCode, row);
+      }
+
+      if (aliases.length > 0) {
+        const byAlias = await queryRunner.manager
+          .createQueryBuilder(ItemMasterRow, 'row')
+          .innerJoin('row.batch', 'batch')
+          .where('lower(trim(row.alias)) = ANY(:aliases)', { aliases })
+          .andWhere('row.valid_to IS NULL')
+          .andWhere('row.is_deleted = false')
+          .andWhere("batch.status = 'published'")
+          .getMany();
+        for (const row of byAlias) {
+          const key = normalizeAlias(row.alias);
+          if (!key) continue;
+          if (currentByAlias.has(key)) currentByAlias.set(key, 'ambiguous');
+          else currentByAlias.set(key, row);
+        }
+      }
 
       const toInsert: ItemMasterRow[] = [];
+      const summary: MergeSummary = { ...EMPTY_MERGE_SUMMARY };
+      summary.duplicateAliasCount = duplicates.length;
 
       for (const item of dedupedItems) {
-        const fingerprint = this.computeFingerprint(item);
+        const aliasKey = normalizeAlias(item.alias);
+        const liveByAlias = aliasKey ? currentByAlias.get(aliasKey) : undefined;
+        const liveByCode = currentByCode.get(item.itemCode);
 
-        const currentRow = currentByCode.get(item.itemCode);
+        if (liveByAlias === 'ambiguous') {
+          summary.ambiguousAliasCount += 1;
+          extraSkips.push(
+            this.skipRepo.create({
+              batchId: batch.id,
+              sheetName: item.sheetName,
+              sourceRowNo: item.sourceRowNo,
+              code: 'ALIAS_AMBIGUOUS',
+              message: `Alias "${item.alias!.trim()}" already belongs to more than one live catalog item. Not merged — fix the live catalog (or this row) so each Alias is unique.`,
+              raw: { alias: item.alias, itemCode: item.itemCode },
+            }),
+          );
+          continue;
+        }
+
+        let currentRow: ItemMasterRow | undefined;
+        let remapped = false;
+        if (liveByAlias && liveByCode && liveByAlias.id !== liveByCode.id) {
+          // File row's item_code points at one live item, its Alias at
+          // another. Merging would have to pick a winner; skip instead.
+          extraSkips.push(
+            this.skipRepo.create({
+              batchId: batch.id,
+              sheetName: item.sheetName,
+              sourceRowNo: item.sourceRowNo,
+              code: 'ALIAS_CONFLICT',
+              message: `Alias "${item.alias!.trim()}" is already live on item ${liveByAlias.itemCode}, but this row's item code matches a different live item (${liveByCode.itemCode}). Not merged.`,
+              raw: {
+                alias: item.alias,
+                itemCode: item.itemCode,
+                liveItemCodeForAlias: liveByAlias.itemCode,
+                liveItemCodeForCode: liveByCode.itemCode,
+              },
+            }),
+          );
+          continue;
+        } else if (liveByAlias) {
+          currentRow = liveByAlias;
+          if (currentRow.itemCode !== item.itemCode) {
+            remapped = true;
+            summary.remappedByAliasCount += 1;
+          }
+        } else if (liveByCode) {
+          currentRow = liveByCode;
+        }
+
+        const incoming = remapped
+          ? { ...item, itemCode: currentRow!.itemCode }
+          : item;
+        const fingerprint = this.computeFingerprint(incoming);
 
         if (currentRow) {
           if (currentRow.fingerprint === fingerprint) {
-            continue; // unchanged since the last publish — no-op
+            summary.unchangedCount += 1;
+            continue;
           }
+          summary.updateCount += 1;
 
           if (
-            currentRow.brand !== item.brand ||
-            currentRow.mainGroup !== item.mainGroup
+            currentRow.brand !== incoming.brand ||
+            currentRow.mainGroup !== incoming.mainGroup
           ) {
-            // Collision warnings stay per-occurrence (not batched) — real
-            // files trigger this rarely (it fires only when a code's
-            // brand/group actually changed), so it doesn't reintroduce the
-            // per-row cost the rest of this rewrite removes.
             await this.auditService.log(
               {
                 userId: null,
@@ -423,25 +482,53 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
                 entityId: currentRow.id,
                 meta: {
                   oldBrand: currentRow.brand,
-                  newBrand: item.brand,
+                  newBrand: incoming.brand,
                   oldGroup: currentRow.mainGroup,
-                  newGroup: item.mainGroup,
-                  itemCode: item.itemCode,
+                  newGroup: incoming.mainGroup,
+                  itemCode: incoming.itemCode,
+                  alias: incoming.alias ?? null,
                 },
               },
               queryRunner.manager,
             );
           }
+        } else {
+          summary.newCount += 1;
         }
 
         toInsert.push(
           this.rowRepo.create({
             batchId: batch.id,
-            ...item,
+            ...incoming,
             fingerprint,
           }),
         );
       }
+
+      const parserSkips = parsed.skips.map((s) =>
+        this.skipRepo.create({
+          batchId: batch.id,
+          sheetName: s.sheetName,
+          sourceRowNo: s.sourceRowNo,
+          code: s.code,
+          message: s.message,
+          raw: s.raw,
+        }),
+      );
+      const allSkips = [...parserSkips, ...extraSkips];
+      if (allSkips.length > 0) {
+        // Chunked, not one bulk insert: a real file can produce tens of
+        // thousands of skip rows (~19,700 for the real MAIN MASTER sample
+        // file), and one unchunked multi-row INSERT for that many rows
+        // exceeds Postgres's 65,535-bound-parameters-per-query limit —
+        // confirmed live: this failed with "bind message has 52490
+        // parameter formats but 0 parameters" before this fix.
+        await queryRunner.manager.save(allSkips, { chunk: 1000 });
+      }
+
+      batch.skippedRows = parsed.skippedRows + extraSkips.length;
+      batch.acceptedRows = toInsert.length;
+      batch.mergeSummary = summary;
 
       // Step 3: chunked bulk insert (same pattern as the skips insert
       // above) instead of one INSERT per row. Previous published rows stay

@@ -2,6 +2,14 @@ export const ITEM_SKIP_CODES: Record<string, string> = {
   UNRECOGNIZED_SHEET: 'This sheet did not match any known Item Master layout.',
   MISSING_ITEM_CODE: 'Row is missing a required item code, catalogue no, or alias.',
   MISSING_ITEM_NAME: 'Row is missing a required item name.',
+  DUPLICATE_ALIAS:
+    'This Alias already appeared earlier in the file. We keep the last row for that Alias and skip this one so it is not merged twice.',
+  DUPLICATE_ITEM_CODE:
+    'This item code already appeared earlier in the file (no Alias). We keep the last row and skip this one.',
+  ALIAS_CONFLICT:
+    'This Alias already belongs to a different live catalog item than this row\'s item code. Not merged — the two identities disagree.',
+  ALIAS_AMBIGUOUS:
+    'This Alias already belongs to more than one live catalog item. Not merged until the live catalog has one row per Alias.',
 };
 
 export function describeItemSkip(code: string): string {

@@ -17,6 +17,15 @@ interface UploadResponse {
   originalName: string;
 }
 
+interface MergeSummary {
+  newCount: number;
+  updateCount: number;
+  unchangedCount: number;
+  duplicateAliasCount: number;
+  remappedByAliasCount: number;
+  ambiguousAliasCount: number;
+}
+
 interface ItemBatch {
   id: string;
   status: 'processing' | 'held' | 'published' | 'rejected';
@@ -28,6 +37,7 @@ interface ItemBatch {
   skippedRows: number;
   errorSummary: string | null;
   uploadedAt: string;
+  mergeSummary?: MergeSummary | null;
 }
 
 const ACCEPT = [
@@ -399,9 +409,45 @@ export function ItemUploadFlow({ persistParam, onPublished, onBatchChange }: Pro
               </div>
               <div>
                 <dt>Rows</dt>
-                <dd>Accepted {batch.acceptedRows} · Skipped {batch.skippedRows} · Total {batch.totalRows}</dd>
+                <dd>Will merge {batch.acceptedRows} · Skipped {batch.skippedRows} · Total {batch.totalRows}</dd>
               </div>
             </dl>
+          )}
+
+          {batch.status !== 'processing' && batch.mergeSummary && typeof batch.mergeSummary.newCount === 'number' && (
+            <div className="alias-review">
+              <h3>Alias check (before merge)</h3>
+              <p className="alias-review-lead">
+                Alias is the primary key. The live catalog is cross-referenced on Alias so the same
+                item is not added twice. Duplicate Aliases inside this file keep the last row.
+              </p>
+              <dl>
+                <div>
+                  <dt>New Aliases</dt>
+                  <dd>{batch.mergeSummary.newCount.toLocaleString('en-IN')}</dd>
+                </div>
+                <div>
+                  <dt>Updates to existing</dt>
+                  <dd>{batch.mergeSummary.updateCount.toLocaleString('en-IN')}</dd>
+                </div>
+                <div>
+                  <dt>Unchanged (not written)</dt>
+                  <dd>{batch.mergeSummary.unchangedCount.toLocaleString('en-IN')}</dd>
+                </div>
+                <div>
+                  <dt>Duplicate Aliases in file</dt>
+                  <dd>{batch.mergeSummary.duplicateAliasCount.toLocaleString('en-IN')}</dd>
+                </div>
+                <div>
+                  <dt>Matched existing Alias, different item code</dt>
+                  <dd>{batch.mergeSummary.remappedByAliasCount.toLocaleString('en-IN')}</dd>
+                </div>
+                <div>
+                  <dt>Ambiguous live Aliases (not merged)</dt>
+                  <dd>{batch.mergeSummary.ambiguousAliasCount.toLocaleString('en-IN')}</dd>
+                </div>
+              </dl>
+            </div>
           )}
 
           {batch.status === 'rejected' && (
@@ -421,7 +467,11 @@ export function ItemUploadFlow({ persistParam, onPublished, onBatchChange }: Pro
           {canPublish && confirmingPublish && (
             <div className="banner banner-warning">
               <p className="banner-title">Publish {batch.acceptedRows.toLocaleString()} items to the live catalog?</p>
-              <p>Everyone searching items will see these right away. Items with a matching code will be updated in place; new codes are added.</p>
+              <p>
+                Alias is the identity. Matching Aliases in the live catalog are updated in place
+                (not added twice). Duplicate Aliases inside this file were folded to the last row.
+                Everyone searching items will see the result right away.
+              </p>
               <div className="batch-actions">
                 <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void onPublish()}>
                   {busy ? 'Working…' : 'Yes, make live'}
@@ -488,7 +538,7 @@ export function ItemUploadFlow({ persistParam, onPublished, onBatchChange }: Pro
                   <tr key={`${row.sourceRowNo}-${i}`}>
                     <td>{row.sheetName}</td>
                     <td>{row.sourceRowNo || '-'}</td>
-                    <td>{describeItemSkip(row.code)}</td>
+                    <td>{row.message || describeItemSkip(row.code)}</td>
                     <td>
                       {row.raw != null && (
                         <details

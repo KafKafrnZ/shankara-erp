@@ -59,6 +59,18 @@ export class ItemMasterBatch {
   @Column({ name: 'error_summary', type: 'text', nullable: true })
   errorSummary: string | null;
 
+  /** Extra-column headers from the uploaded file, in sheet order — including
+   *  columns that were blank on every row. Copy/export pads from this so a
+   *  field the sheet had still shows up as an empty column. */
+  @Column({ name: 'extra_headers', type: 'text', array: true, default: '{}' })
+  extraHeaders: string[];
+
+  /** Pre-merge Alias check: new / update / unchanged / in-file duplicates /
+   *  live-catalog remaps. Filled at parse time so the review screen does
+   *  not have to rescan the file. */
+  @Column({ name: 'merge_summary', type: 'jsonb', default: {} })
+  mergeSummary: Record<string, number>;
+
   @Column({ name: 'published_at', type: 'timestamptz', nullable: true })
   publishedAt: Date | null;
 
