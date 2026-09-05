@@ -28,6 +28,14 @@ services:
     container_name: shankara-pgbouncer
     env_file:
       - ./backend/.env
+    # DB_USER/DB_PASSWORD below use Compose's ${} host-side substitution, which
+    # only reads a .env file at the repo root (NOT the env_file: above, which
+    # only injects into the container). A repo-root `.env` must exist —
+    # normally a symlink to backend/.env (`New-Item -ItemType SymbolicLink
+    # -Path .env -Target backend\.env`, elevated, on Windows; `ln -s` on
+    # Linux, see docs/DEPLOYMENT.md) so it never drifts out of sync. Without
+    # it, DATABASE_PASSWORD silently resolves blank and pgbouncer fails all
+    # auth to Postgres — this took down prod on 2026-09-05.
     environment:
       DB_USER: ${DATABASE_USER:-shankara_admin}
       DB_PASSWORD: ${DATABASE_PASSWORD}
