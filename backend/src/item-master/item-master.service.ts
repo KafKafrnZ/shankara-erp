@@ -305,7 +305,7 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
         batch.sourceFile.storageKey,
       );
       const tmpPath = path.join(
-        '/tmp',
+        os.tmpdir(),
         `item_parse_${batchId}_${Date.now()}`,
       );
       let parsed: Awaited<ReturnType<typeof parseItemMasterFile>>;
