@@ -12,6 +12,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, QueryFailedError } from 'typeorm';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as stream from 'stream';
 import { promisify } from 'util';
@@ -115,7 +116,7 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
     userAgent?: string,
   ) {
     const tmpPath = path.join(
-      '/tmp',
+      os.tmpdir(),
       `item_upload_${Date.now()}_${Math.random().toString(36).substring(7)}`,
     );
     const queryRunner = this.dataSource.createQueryRunner();
