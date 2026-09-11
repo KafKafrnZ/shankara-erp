@@ -44,10 +44,17 @@ Nearby PCs
    Windows: double-click -> Local Machine -> Trusted Root Certification Authorities
 
 After reboot
-1. Start Docker Desktop and wait until it is running
-2. Admin PowerShell:
+Easiest: double-click the "Start Shankara ERP" shortcut on the Desktop
+(or E:\shankara-erp\ops\windows\Start-Shankara-ERP.bat directly). It asks
+for admin once (UAC), then starts Docker Desktop if needed, brings up the
+containers, starts the NSSM services if they're not already running, runs
+health checks, and opens the site in a browser if everything passed — or
+prints exactly what failed if it didn't. Safe to run any time; no-ops if
+everything's already up.
+
+Same thing without the click:
+  Admin PowerShell:
      E:\shankara-erp\ops\windows\start-hosting.ps1
-   (starts NSSM services if they are not already running; no-op if they are)
    One-shot NSSM install, if services are missing: ops\windows\setup-services.ps1
 
 Windows PostgreSQL 16 installer service is Stopped/Manual so it does not steal 5432 from Docker.
