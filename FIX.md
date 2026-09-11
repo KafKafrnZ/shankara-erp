@@ -61,15 +61,29 @@ is ever renamed/re-IP'd in a way that needs a new SAN.
 
 ## Redistribution
 
-The onboarding package for other PCs (`ops/windows/setup-shankara-erp-access.ps1`,
-also mirrored on the host's Desktop for handing to IT staff) was updated:
-previously it required copying both `caddy-root.crt` and
-`caddy-intermediate.crt` and installing them into two different trust
-stores (`Root` + `CA`) because Caddy's auto-managed CA was a root+intermediate
-pair. Now it only needs the one `shankara-root-ca.crt`, installed into
-`LocalMachine\Root`.
+The onboarding package for other PCs (`setup-shankara-erp-access.ps1`, kept
+on the host's Desktop at `Desktop\redist\` for handing to IT staff — not
+currently committed to this repo) was updated: previously it required
+copying both `caddy-root.crt` and `caddy-intermediate.crt` and installing
+them into two different trust stores (`Root` + `CA`) because Caddy's
+auto-managed CA was a root+intermediate pair. Now it only needs the one
+`shankara-root-ca.crt`, installed into `LocalMachine\Root`.
 
 Any PC that trusted the old Caddy-managed CA (root or root+intermediate)
 needs `shankara-root-ca.crt` installed and the stale entries can be left in
 place (harmless) or removed. Re-run `setup-shankara-erp-access.ps1` with the
 new cert to update.
+
+## Known open items / next steps
+
+- **DHCP reservation for this host's MAC address — top priority.** No
+  reservation exists as of 2026-09-11; the LAN IP has already drifted three
+  times (`192.168.4.59` → `.157` → `.181`) without one. This doesn't break
+  cert trust anymore (see above), but it does break every PC's hosts-file
+  entry for `erp.shankara.local` whenever it happens, until
+  `setup-shankara-erp-access.ps1` is re-run with the current IP. Needs the
+  office router admin — not doable from this host alone. Owner: Grok
+  (day-to-day handler as of 2026-09-05) with the user; Claude's role here is
+  periodic audit, next one on request.
+- Off-box backups and a restore drill are still outstanding (see prior
+  hosting-status notes, not repeated here).
