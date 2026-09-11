@@ -208,6 +208,77 @@ describe('ItemMasterParser', () => {
     }
   });
 
+  it('falls back to Alias as the key when no stricter layout matches', async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Sheet1');
+    // Shape of a raw Tally stock-item export: named "Stock Item Name" in
+    // column A (not blank), so cp_sani_others_v1 does not match. Only
+    // 'Alias' plus a few recognized names are required for the fallback.
+    sheet.addRow([
+      'Stock Item Name',
+      'Alias',
+      'Main Group',
+      'Sub Group',
+      'UOM',
+      'Category',
+      'Part No',
+    ]);
+    sheet.addRow([
+      'B2210101XX - U SHAPED RAIL - CERA',
+      'BAHCERB2jgfkcutkrcrck',
+      'NSTL ACCESSORIES & HARDWARE',
+      'AH-CERA',
+      'PCS',
+      'CERA',
+      'B2210101XX',
+    ]);
+
+    const tmpPath = path.join(os.tmpdir(), `generic-alias-${Date.now()}.xlsx`);
+    await workbook.xlsx.writeFile(tmpPath);
+    try {
+      const result = await parseItemMasterStream(tmpPath);
+      expect(result.recognizedSheets).toBe(1);
+      expect(result.acceptedRows).toBe(1);
+
+      const item = result.items[0];
+      expect(item.layoutKey).toBe('generic_alias_v1');
+      expect(item.itemCode).toBe('BAHCERB2jgfkcutkrcrck');
+      expect(item.alias).toBe('BAHCERB2jgfkcutkrcrck');
+      expect(item.itemName).toBe('B2210101XX - U SHAPED RAIL - CERA');
+      expect(item.mainGroup).toBe('NSTL ACCESSORIES & HARDWARE');
+      // Not a fixed field on this layout — must still show up, not drop.
+      expect(item.extra).toEqual({
+        Category: 'CERA',
+        'Part No': 'B2210101XX',
+      });
+    } finally {
+      fs.unlinkSync(tmpPath);
+    }
+  });
+
+  it('reports a small unrecognized sheet instead of silently producing nothing', async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Sheet1');
+    // Fewer than 20 rows and no 'Alias' column at all — used to hit EOF
+    // before the old 20-row check ever fired, leaving 0 recognized sheets,
+    // 0 rows, and no skip message explaining why.
+    sheet.addRow(['Some Column', 'Another Column']);
+    sheet.addRow(['x', 'y']);
+
+    const tmpPath = path.join(os.tmpdir(), `unrecognized-${Date.now()}.xlsx`);
+    await workbook.xlsx.writeFile(tmpPath);
+    try {
+      const result = await parseItemMasterStream(tmpPath);
+      expect(result.recognizedSheets).toBe(0);
+      expect(result.skippedSheets).toBe(1);
+      expect(result.skips).toHaveLength(1);
+      expect(result.skips[0].code).toBe('UNRECOGNIZED_SHEET');
+      expect(result.skips[0].message).toMatch(/checked 2 rows/);
+    } finally {
+      fs.unlinkSync(tmpPath);
+    }
+  });
+
   it('parses the same master-code layout from an .xls workbook', async () => {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet([MASTER_HEADERS, MASTER_ROW]);

@@ -14,6 +14,41 @@ import {
 } from '../../common/spreadsheet-kind';
 import { decodeSpreadsheetText, parseCsvText } from './csv';
 
+// Excel's day 0 is Dec 30 1899 (not Jan 1 1900) — this offset also
+// self-corrects for Excel's fictitious Feb 29 1900 leap-year bug, which is
+// the standard, widely-used conversion.
+const EXCEL_EPOCH_UTC_MS = Date.UTC(1899, 11, 30);
+
+// A cell genuinely typed as a Date in the source file already arrives here
+// as an ISO string (unwrapCell converts it upstream). A column that's
+// merely *labelled* as a date but whose cells are plain numbers — common
+// when Tally exports leave a column unformatted — arrives as a raw Excel
+// serial number instead (confirmed live: "Applicable From" did both in the
+// same file, row to row). Extra columns have no per-column type info to
+// rely on, so this is a heuristic scoped to date-labelled columns only.
+function formatExtraValue(label: string, value: any): string {
+  if (!/date|applicable\s*from/i.test(label)) return String(value).trim();
+
+  // A cell already typed as a real Date arrives here as a full ISO
+  // datetime string (unwrapCell converts it upstream) — trim to date-only
+  // so it matches the serial-number branch below instead of showing a
+  // spurious T00:00:00.000Z on an otherwise plain date column.
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
+    return value.slice(0, 10);
+  }
+  if (
+    typeof value === 'number' &&
+    Number.isFinite(value) &&
+    value >= 1 &&
+    value <= 60000 // ~ year 1900 to ~2064, the plausible business-data range
+  ) {
+    return new Date(EXCEL_EPOCH_UTC_MS + value * 86400000)
+      .toISOString()
+      .slice(0, 10);
+  }
+  return String(value).trim();
+}
+
 function extractExtra(
   row: any[],
   headerRow: any[],
@@ -28,7 +63,7 @@ function extractExtra(
     if (isPlaceholderValue(value)) continue;
     const label = String(headerRow[colIndex] ?? normalizedHeader).trim();
     if (!label) continue;
-    extra[label] = String(value).trim();
+    extra[label] = formatExtraValue(label, value);
   }
   return extra;
 }
@@ -131,16 +166,7 @@ async function ingestSheet(
         );
         continue;
       }
-      if (rowsScanned >= 20) {
-        result.skippedSheets++;
-        result.skips.push({
-          sheetName,
-          sourceRowNo: null,
-          code: 'UNRECOGNIZED_SHEET',
-          message: `Sheet ${sheetName} did not match any known layout after 20 rows.`,
-        });
-        return;
-      }
+      if (rowsScanned >= 20) break;
       continue;
     }
 
@@ -171,6 +197,24 @@ async function ingestSheet(
       });
     }
   }
+
+  // Ran out of rows (or hit the 20-row cap) without matching any layout.
+  // Previously this only got reported once rowsScanned reached exactly 20 —
+  // a sheet with fewer rows than that (like a small sample/test file) hit
+  // EOF first and produced no skip at all: 0 recognized, 0 rows, 0 merge
+  // candidates, with nothing in the UI explaining why. Always report it.
+  if (!headerRow) {
+    result.skippedSheets++;
+    result.skips.push({
+      sheetName,
+      sourceRowNo: null,
+      code: 'UNRECOGNIZED_SHEET',
+      message:
+        rowsScanned === 0
+          ? `Sheet ${sheetName} is empty.`
+          : `Sheet ${sheetName} did not match any known layout (checked ${rowsScanned} row${rowsScanned === 1 ? '' : 's'} for a header matching SAP Item Master, Master Code, CP Sani Others, or a generic sheet with an Alias column).`,
+    });
+  }
 }
 
 async function* rowsFromMatrix(matrix: any[][]): AsyncIterable<SheetRow> {
@@ -179,25 +223,35 @@ async function* rowsFromMatrix(matrix: any[][]): AsyncIterable<SheetRow> {
   }
 }
 
+// Not actually streaming: ExcelJS's WorkbookReader reads zip entries in
+// physical file order, and if a writer puts xl/sharedStrings.xml after the
+// worksheet data (confirmed live: a real "Sample Material.xlsx" export did
+// this), it can't resolve text in time — cells come through as unresolved
+// {sharedString: n} refs, which silently normalize to "" everywhere a
+// header is expected, so no layout ever matches. Loading the whole workbook
+// first guarantees every string resolves regardless of part order. These
+// files are tens of thousands of rows, not millions — well inside the
+// 1.5GB heap this host already allocates the backend.
 async function parseXlsxStream(filePath: string): Promise<ParseResult> {
   const result = emptyResult();
-  const workbook = new ExcelJS.stream.xlsx.WorkbookReader(filePath, {
-    worksheets: 'emit',
-    hyperlinks: 'emit',
-  });
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(filePath);
 
-  for await (const worksheetReader of workbook) {
-    const sheetName =
-      (worksheetReader as any).name || `Sheet${result.totalSheets + 1}`;
-    async function* excelRows(): AsyncIterable<SheetRow> {
-      for await (const row of worksheetReader) {
-        const values = Array.isArray(row.values) ? row.values.slice(1) : [];
-        yield { values, number: row.number };
-      }
-    }
-    await ingestSheet(result, sheetName, excelRows());
+  for (const worksheet of workbook.worksheets) {
+    const rows: SheetRow[] = [];
+    worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+      const values = Array.isArray(row.values)
+        ? (row.values as any[]).slice(1)
+        : [];
+      rows.push({ values, number: rowNumber });
+    });
+    await ingestSheet(result, worksheet.name, rowsFromArray(rows));
   }
   return result;
+}
+
+async function* rowsFromArray(rows: SheetRow[]): AsyncIterable<SheetRow> {
+  for (const row of rows) yield row;
 }
 
 async function parseXlsFile(filePath: string): Promise<ParseResult> {

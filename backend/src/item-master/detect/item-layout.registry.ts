@@ -258,10 +258,86 @@ export const cpSaniOthersDetector: ItemLayoutDetector = {
   },
 };
 
+// 4. Generic Alias-Keyed Detector — permissive fallback for any file that
+// simply has an Alias column, whatever else it does or doesn't have. Alias
+// is the primary key; every other recognized field is filled in if present,
+// anything else flows into `extra` same as the other layouts. Deliberately
+// loose on purpose — tighten this once we know what a real, reliable Excel
+// structure looks like. Must stay last in the registry: the stricter
+// layouts above all include "alias" too and should win first when they fit.
+export const genericAliasDetector: ItemLayoutDetector = {
+  key: 'generic_alias_v1',
+  knownHeaderKeys: [
+    'alias',
+    'stock item name',
+    'stock item name for migration',
+    'sap item description',
+    'stock item name for searching',
+    'brand',
+    'main group',
+    'sub group',
+    'uom',
+    'hsn description',
+    'catalogue no',
+    'sap item code',
+  ],
+  detect(headerRow: any[]): boolean {
+    return matchHeaders(headerRow, ['alias']);
+  },
+  parseRow(
+    row: any[],
+    columns: Record<string, number>,
+  ): ParsedItemRow | { skip: true; reason: string; code: string } {
+    const alias = row[columns['alias']];
+    const itemName =
+      row[columns['stock item name']] ||
+      row[columns['stock item name for migration']] ||
+      row[columns['sap item description']] ||
+      row[columns['stock item name for searching']];
+
+    const catalogueNo = row[columns['catalogue no']];
+    const sapItemCode = row[columns['sap item code']];
+    const brand = row[columns['brand']];
+    const mainGroup = row[columns['main group']];
+    const subGroup = row[columns['sub group']];
+    const uom = row[columns['uom']];
+    const hsnDescription = row[columns['hsn description']];
+
+    if (isPlaceholderValue(alias)) {
+      return {
+        skip: true,
+        reason: 'Missing stable identifier (Alias)',
+        code: 'MISSING_ITEM_CODE',
+      };
+    }
+    if (isPlaceholderValue(itemName)) {
+      return {
+        skip: true,
+        reason: 'Missing item name',
+        code: 'MISSING_ITEM_NAME',
+      };
+    }
+
+    return {
+      itemCode: String(alias),
+      alias: String(alias),
+      catalogueNo: catalogueNo ? String(catalogueNo) : undefined,
+      sapItemCode: sapItemCode ? String(sapItemCode) : undefined,
+      brand: brand ? String(brand) : undefined,
+      itemName: String(itemName),
+      hsnDescription: hsnDescription ? String(hsnDescription) : undefined,
+      mainGroup: mainGroup ? String(mainGroup) : undefined,
+      subGroup: subGroup ? String(subGroup) : undefined,
+      uom: uom ? String(uom) : undefined,
+    };
+  },
+};
+
 export const ITEM_LAYOUT_REGISTRY: ItemLayoutDetector[] = [
   sapItemMasterDetector,
   masterCodeDetector,
   cpSaniOthersDetector,
+  genericAliasDetector,
 ];
 
 export function buildColumnMap(headerRow: any[]): Record<string, number> {
