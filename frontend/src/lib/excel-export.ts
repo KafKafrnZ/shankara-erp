@@ -21,7 +21,7 @@ export interface ExportableRow {
 // (Tally's own template has a trailing space on "Conversion1 ").
 const TALLY_COLUMNS: Array<{
   label: string;
-  key?: keyof ExportableRow;
+  key?: Exclude<keyof ExportableRow, 'extra'>;
   extraKey?: string;
 }> = [
   { label: 'Stock Item Name', key: 'itemName' },
