@@ -5,7 +5,6 @@ import {
   BadRequestException,
   OnModuleInit,
   OnModuleDestroy,
-  Inject,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -22,8 +21,7 @@ import { ItemMasterBatch } from './entities/item-master-batch.entity';
 import { ItemMasterRow } from './entities/item-master-row.entity';
 import { ItemMasterSkip } from './entities/item-master-skip.entity';
 import { SourceFile } from '../storage/entities/source-file.entity';
-import type { ObjectStore } from '../storage/object-store';
-import { OBJECT_STORE } from '../storage/object-store';
+import { LocalFsObjectStore } from '../storage/local-fs.object-store';
 import { AuditService } from '../audit/audit.service';
 import { parseItemMasterFile } from './parse/item-master.parser';
 import { ItemSearchService } from './item-search.service';
@@ -65,7 +63,7 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
     private skipRepo: Repository<ItemMasterSkip>,
     @InjectRepository(SourceFile)
     private sourceFileRepo: Repository<SourceFile>,
-    @Inject(OBJECT_STORE) private objectStore: ObjectStore,
+    private objectStore: LocalFsObjectStore,
     private dataSource: DataSource,
     private auditService: AuditService,
     private configService: ConfigService,

@@ -1,11 +1,16 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ObjectStore, StoredObject } from './object-store';
 import * as fs from 'fs';
 import * as path from 'path';
 
+export type StoredObject = {
+  key: string;
+  sha256: string;
+  bytes: number;
+};
+
 @Injectable()
-export class LocalFsObjectStore implements ObjectStore {
+export class LocalFsObjectStore {
   private readonly storageDir: string;
 
   constructor(private configService: ConfigService) {
