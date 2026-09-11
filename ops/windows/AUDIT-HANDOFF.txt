@@ -1,9 +1,12 @@
 Shankara ERP — Windows host, ready for audit (not declared live)
 
 URL (this PC):  https://erp.shankara.local
-LAN IP:         192.168.4.59
+LAN IP:         192.168.4.181
+                Re-verify before handing to nearby PCs — this address has
+                drifted (192.168.4.59 → .157 → .181) and is not DHCP-reserved.
+                `ipconfig` on this host wins over this file.
 Repo:           E:\shankara-erp
-Branch:         local/office-followup (87f910a)
+Branch:         master
 OS:             Windows 11 Pro, 8 GB RAM, Dell OptiPlex 5060
 
 What is running now
@@ -11,8 +14,17 @@ What is running now
 - shankara-postgres (Postgres 16 alpine) 127.0.0.1:5432
 - shankara-pgbouncer 127.0.0.1:6432  (app uses this)
 - shankara-redis 127.0.0.1:6379  (provisioned, unused by app)
-- NestJS  node dist/main.js  :3000
-- Caddy  :80 and :443  (internal CA, serves frontend/dist, proxies /api)
+- NSSM service ShankaraERP-Backend  (node dist/main.js, :3000)
+- NSSM service ShankaraERP-Caddy    (:80 / :443)
+- Scheduled task ShankaraERP-Watchdog (every 5 min + at boot)
+  There are no ShankaraERP-Backend / ShankaraERP-Caddy logon tasks.
+
+TLS
+- Caddy reads a fixed leaf cert/key (ops\Caddyfile.windows), not `tls internal`.
+- Trust ops\windows\shankara-root-ca.crt once per PC (Local Machine →
+  Trusted Root Certification Authorities). Do not look for caddy-root.crt.
+- That CA is not Caddy-managed, so a service restart / reboot / Docker
+  cycle will not regenerate it and break office PCs. See FIX.md.
 
 Verified
 - GET https://erp.shankara.local/api/health  -> {"status":"ok","db":"ok"}
@@ -27,23 +39,23 @@ Accounts (passwords only in backend\.env, never commit)
 - SEED_*_PASSWORD in E:\shankara-erp\backend\.env
 
 Nearby PCs
-1. hosts:  192.168.4.59    erp.shankara.local
-2. Trust E:\shankara-erp\ops\windows\caddy-root.crt
+1. hosts:  <this host's current LAN IP>    erp.shankara.local
+2. Trust E:\shankara-erp\ops\windows\shankara-root-ca.crt
    Windows: double-click -> Local Machine -> Trusted Root Certification Authorities
 
 After reboot
 1. Start Docker Desktop and wait until it is running
 2. Admin PowerShell:
      E:\shankara-erp\ops\windows\start-hosting.ps1
-   (also attempts Scheduled Tasks ShankaraERP-Backend / ShankaraERP-Caddy at logon)
+   (starts NSSM services if they are not already running; no-op if they are)
+   One-shot NSSM install, if services are missing: ops\windows\setup-services.ps1
 
 Windows PostgreSQL 16 installer service is Stopped/Manual so it does not steal 5432 from Docker.
 
 Known limits for the auditor (do not treat as production-hardened)
-- Single machine, single Node process, no monitoring
+- Single machine, single Node process, watchdog is the only monitor
 - LAN-only; no public DNS; private CA
 - No forgot-password; keep two steward accounts before staff use
-- Backend is not a Windows service unless the logon tasks registered
 - Catalog empty until a Tally .xlsx is uploaded and published
 - Do not port-forward 80/443 to the internet
 - Do not run npm run test:e2e against this database
