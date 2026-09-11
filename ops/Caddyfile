@@ -21,7 +21,7 @@
 
 	# The backend (NestJS) runs directly on this same machine, not in a
 	# container — see docker-compose.yml's own comment: it only runs the
-	# data tier (Postgres/pgbouncer/redis/OpenSearch). Adjust the port if
+	# data tier (Postgres/pgbouncer/redis). Adjust the port if
 	# backend/.env's PORT isn't the default 3000.
 	handle /api/* {
 		reverse_proxy 127.0.0.1:3000

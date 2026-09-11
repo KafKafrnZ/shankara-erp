@@ -139,15 +139,14 @@ They are not meant to be reachable from other machines.
 
 Remote: `https://github.com/KafKafrnZ/shankara-erp.git`
 
-| Branch | Status |
-|---|---|
-| `local/office-followup` | **Deploy this.** Latest (as of 2026-08-28): catalog CRUD, People admin, httpOnly auth cookie, content-sniffed uploads, filter export. |
-| `master` | Behind. Missing the cookie migration and later catalog work. Do not deploy `master` until it is fast-forwarded. |
+Deploy **`master`**. It is the default branch and the live office line
+(catalog CRUD, Alias merge identity, httpOnly auth cookie, Windows host
+TLS/ops fixes). Do not look for `local/office-followup` — that branch was
+folded into `master` and deleted.
 
 ```bash
 git clone https://github.com/KafKafrnZ/shankara-erp.git /opt/shankara-erp
 cd /opt/shankara-erp
-git checkout local/office-followup
 ```
 
 ---
@@ -222,7 +221,6 @@ sudo useradd --system --home /opt/shankara-erp --shell /usr/sbin/nologin shankar
 sudo mkdir -p /opt/shankara-erp
 sudo git clone https://github.com/KafKafrnZ/shankara-erp.git /opt/shankara-erp
 cd /opt/shankara-erp
-sudo git checkout local/office-followup
 sudo cp backend/.env.example backend/.env
 ```
 
@@ -530,7 +528,7 @@ If any of those fail, do not hand the URL to staff.
 Print this. Tick it on the server, not from memory.
 
 - [ ] Linux (Debian/Ubuntu), not a native Windows install
-- [ ] Deployed branch is `local/office-followup` (or `master` once it contains that work)
+- [ ] Deployed branch is `master`
 - [ ] `JWT_SECRET` and DB password generated on this machine — not copied from the laptop
 - [ ] Steward / finance / branch passwords are unique production values, given to real people, not shared in chat
 - [ ] `NODE_ENV=production`

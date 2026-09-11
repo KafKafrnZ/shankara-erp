@@ -98,13 +98,17 @@ decision versus what's engineering work.
 
 ## TLS reverse proxy (Caddy)
 
-`Caddyfile` fronts the app with real HTTPS on the office LAN, no public
-domain needed — see the comments at the top of the file for how the internal
-certificate authority works. It serves the built frontend directly and
-proxies `/api/*` to the backend, which runs as its own process on the same
-machine (see docker-compose.yml's own comment: it only runs the data tier —
-Postgres/pgbouncer/redis/OpenSearch — so Caddy talks to the backend via
-`127.0.0.1:3000`, not a container name).
+Two Caddyfiles:
+
+- `ops/Caddyfile` — Linux office-server path (`tls internal`). Used by
+  [`docs/DEPLOYMENT.md`](../docs/DEPLOYMENT.md).
+- `ops/Caddyfile.windows` — the live Windows trial host. Uses a **fixed**
+  root CA + leaf cert, not `tls internal`. See [`FIX.md`](../FIX.md) for
+  why: Caddy's auto-managed CA regenerated twice and broke trust on every
+  office PC.
+
+Both serve the built frontend and proxy `/api/*` to the backend on
+`127.0.0.1:3000` (the data tier is Docker; the app is not).
 
 Live-tested 2026-08-21 against the real backend and a real frontend build:
 HTTP→HTTPS redirect, TLS handshake via the internal CA, static frontend

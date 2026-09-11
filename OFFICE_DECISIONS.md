@@ -10,7 +10,7 @@ Walk these with the IT head **before** following [`docs/DEPLOYMENT.md`](docs/DEP
 
 3. **What server is this actually running on?** Everything in this project assumes one on-prem machine running Postgres, pgbouncer, redis, the backend, and Caddy at once. Confirm that machine exists, has the memory to spare, and has someone responsible for it — patching, disk space, uptime.
 
-4. **How do office machines resolve the server's hostname?** TLS setup (`ops/Caddyfile`) needs every machine to reach the server at a consistent hostname, not just its IP. If the office has real internal DNS, that's the clean answer — otherwise it's a `hosts` file entry per machine, which works fine for a small office but is one more thing to maintain by hand as machines change.
+4. **How do office machines resolve the server's hostname?** TLS setup needs every machine to reach the server at a consistent hostname, not just its IP. If the office has real internal DNS, that's the clean answer — otherwise it's a `hosts` file entry per machine. **If you use the hosts-file fallback, the server's LAN IP must be DHCP-reserved (or static).** Without a reservation the IP has already drifted three times (`192.168.4.59` → `.157` → `.181` as of 2026-09-11), and every PC's `erp.shankara.local` entry goes stale until the onboarding script is re-run. Needs the office router admin.
 
 5. **Who can access the server, physically and remotely?** This is the one machine holding real accounting/business records. Worth a plain answer to "who has a login, and how is that login itself secured" before this goes live — not a step here for me to fill in.
 

@@ -75,8 +75,10 @@ until monitoring and unique production secrets are in place — see
 `ARCHITECTURE.md` §11.
 
 Caddy terminates TLS with an **internal CA**. Each office device trusts
-that CA once (`ops/README.md`). Public Let’s Encrypt is the wrong tool
-until the hostname is on the public internet.
+that CA once (`ops/README.md`). The live Windows host uses a fixed CA
+(`ops/Caddyfile.windows`, `FIX.md`), not Caddy's auto-managed `tls
+internal`. Public Let’s Encrypt is the wrong tool until the hostname is
+on the public internet.
 
 ---
 
