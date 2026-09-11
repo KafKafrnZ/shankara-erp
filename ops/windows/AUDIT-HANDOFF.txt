@@ -1,0 +1,49 @@
+Shankara ERP — Windows host, ready for audit (not declared live)
+
+URL (this PC):  https://erp.shankara.local
+LAN IP:         192.168.4.59
+Repo:           E:\shankara-erp
+Branch:         local/office-followup (87f910a)
+OS:             Windows 11 Pro, 8 GB RAM, Dell OptiPlex 5060
+
+What is running now
+- Docker Desktop engine (WSL distro docker-desktop)
+- shankara-postgres (Postgres 16 alpine) 127.0.0.1:5432
+- shankara-pgbouncer 127.0.0.1:6432  (app uses this)
+- shankara-redis 127.0.0.1:6379  (provisioned, unused by app)
+- NestJS  node dist/main.js  :3000
+- Caddy  :80 and :443  (internal CA, serves frontend/dist, proxies /api)
+
+Verified
+- GET https://erp.shankara.local/api/health  -> {"status":"ok","db":"ok"}
+- GET https://erp.shankara.local/api/auth/me -> 401 (real Nest, not a stub)
+- GET https://erp.shankara.local/            -> 200 (SPA)
+- POST /api/auth/login as steward@shankara.local -> 200, role steward
+
+Accounts (passwords only in backend\.env, never commit)
+- steward@shankara.local
+- finance@shankara.local
+- branch@shankara.local
+- SEED_*_PASSWORD in E:\shankara-erp\backend\.env
+
+Nearby PCs
+1. hosts:  192.168.4.59    erp.shankara.local
+2. Trust E:\shankara-erp\ops\windows\caddy-root.crt
+   Windows: double-click -> Local Machine -> Trusted Root Certification Authorities
+
+After reboot
+1. Start Docker Desktop and wait until it is running
+2. Admin PowerShell:
+     E:\shankara-erp\ops\windows\start-hosting.ps1
+   (also attempts Scheduled Tasks ShankaraERP-Backend / ShankaraERP-Caddy at logon)
+
+Windows PostgreSQL 16 installer service is Stopped/Manual so it does not steal 5432 from Docker.
+
+Known limits for the auditor (do not treat as production-hardened)
+- Single machine, single Node process, no monitoring
+- LAN-only; no public DNS; private CA
+- No forgot-password; keep two steward accounts before staff use
+- Backend is not a Windows service unless the logon tasks registered
+- Catalog empty until a Tally .xlsx is uploaded and published
+- Do not port-forward 80/443 to the internet
+- Do not run npm run test:e2e against this database
