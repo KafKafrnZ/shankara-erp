@@ -7,53 +7,49 @@ describe('buildExcelPasteText', () => {
     expect(buildExcelPasteText([])).toBe('');
   });
 
-  it('builds a tab-separated header and one row per item', () => {
+  it('builds a tab-separated header in Tally\'s own stock-item column order', () => {
     const rows: ExportableRow[] = [
-      { itemCode: 'ABC-1', itemName: 'Item One', brand: 'Kohler' },
+      { itemCode: 'ABC-1', itemName: 'Item One', mainGroup: 'STEEL LONG' },
     ];
     const text = buildExcelPasteText(rows);
     const [header, row1] = text.split('\n');
-    expect(header.split('\t')[0]).toBe('Item Code');
-    expect(header.split('\t')[1]).toBe('Item Name');
-    expect(row1.split('\t')[0]).toBe('ABC-1');
-    expect(row1.split('\t')[1]).toBe('Item One');
+    const cols = header.split('\t');
+    expect(cols).toHaveLength(47);
+    expect(cols[0]).toBe('Stock Item Name');
+    expect(cols.at(-1)).toBe('OB Date');
+    const cells = row1.split('\t');
+    expect(cells[0]).toBe('Item One');
+    expect(cells[2]).toBe('STEEL LONG');
   });
 
-  it('appends extra columns in first-seen order, not alphabetically', () => {
+  it('reads a non-entity Tally column from extra by its exact label', () => {
     const rows: ExportableRow[] = [
-      { itemCode: 'A', itemName: 'A', extra: { Zeta: 'z1' } },
-      { itemCode: 'B', itemName: 'B', extra: { Alpha: 'a1' } },
-    ];
-    const text = buildExcelPasteText(rows);
-    const header = text.split('\n')[0].split('\t');
-    // The API pads extra in sheet-header order. Sorting here would put
-    // Alpha before Zeta and scramble columns relative to the file.
-    expect(header.slice(-2)).toEqual(['Zeta', 'Alpha']);
-  });
-
-  it('keeps a padded empty extra column so a blank sheet field still exports', () => {
-    const rows: ExportableRow[] = [
-      { itemCode: 'A', itemName: 'A', extra: { 'MRP Value': '', 'HSN No': '123' } },
+      { itemCode: 'A', itemName: 'A', extra: { Category: 'OTHERS', 'HSN No': '72111410' } },
     ];
     const text = buildExcelPasteText(rows);
     const header = text.split('\n')[0].split('\t');
     const data = text.split('\n')[1].split('\t');
-    const mrpIdx = header.indexOf('MRP Value');
-    expect(mrpIdx).toBeGreaterThan(-1);
-    expect(data[mrpIdx]).toBe('');
-    expect(header).toContain('SAP Item Code');
+    expect(data[header.indexOf('Category')]).toBe('OTHERS');
+    expect(data[header.indexOf('HSN No')]).toBe('72111410');
   });
 
-  it('pads a blank cell for an extra key a given row has no value for', () => {
+  it('uses extraKey when the displayed label has a trailing space (Conversion1)', () => {
     const rows: ExportableRow[] = [
-      { itemCode: 'A', itemName: 'A', extra: { Color: 'red' } },
-      { itemCode: 'B', itemName: 'B', extra: {} },
+      { itemCode: 'A', itemName: 'A', extra: { Conversion1: '1.6099' } },
     ];
     const text = buildExcelPasteText(rows);
-    const lines = text.split('\n');
-    const colorIdx = lines[0].split('\t').indexOf('Color');
-    expect(lines[1].split('\t')[colorIdx]).toBe('red');
-    expect(lines[2].split('\t')[colorIdx]).toBe('');
+    const header = text.split('\n')[0].split('\t');
+    const data = text.split('\n')[1].split('\t');
+    expect(data[header.indexOf('Conversion1 ')]).toBe('1.6099');
+  });
+
+  it('renders a column with no data as an empty cell, not "null"/"undefined"', () => {
+    const rows: ExportableRow[] = [{ itemCode: 'A', itemName: 'A' }];
+    const text = buildExcelPasteText(rows);
+    const cells = text.split('\n')[1].split('\t');
+    expect(cells).toHaveLength(47);
+    expect(cells).not.toContain('null');
+    expect(cells).not.toContain('undefined');
   });
 
   it('flattens a tab or newline inside a cell so it cannot split into extra columns/rows on paste', () => {
@@ -62,16 +58,8 @@ describe('buildExcelPasteText', () => {
     ];
     const text = buildExcelPasteText(rows);
     const dataLine = text.split('\n')[1];
-    // Only 10 fixed columns worth of tabs should exist on this line — a
-    // literal tab in the cell would otherwise add an 11th field.
-    expect(dataLine.split('\t')).toHaveLength(10);
-  });
-
-  it('renders a missing field as an empty cell, not "null"/"undefined"', () => {
-    const rows: ExportableRow[] = [{ itemCode: 'A', itemName: 'A' }];
-    const text = buildExcelPasteText(rows);
-    const cells = text.split('\n')[1].split('\t');
-    expect(cells).not.toContain('null');
-    expect(cells).not.toContain('undefined');
+    // Only the 47 Tally columns' worth of tabs should exist on this line —
+    // a literal tab in the cell would otherwise add an extra field.
+    expect(dataLine.split('\t')).toHaveLength(47);
   });
 });

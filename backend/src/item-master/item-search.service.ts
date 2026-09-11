@@ -31,41 +31,74 @@ export function mergeExportExtraKeys(
   return out;
 }
 
-/** First-seen extra key order across padded rows — not alphabetical.
- *  Callers pad extra from getExportExtraKeys() so this matches sheet order. */
-export function extraKeysInOrder(
-  rows: Array<{ extra?: Record<string, string> | null }>,
-): string[] {
-  const keys: string[] = [];
-  const seen = new Set<string>();
-  for (const row of rows) {
-    for (const key of Object.keys(row.extra || {})) {
-      if (seen.has(key)) continue;
-      seen.add(key);
-      keys.push(key);
-    }
-  }
-  return keys;
-}
-
-// Column order for both the bulk/export endpoints and the Excel workbook —
-// same fixed fields the drawer already shows, in the same order, so the
-// paste and the on-screen card read the same way.
-const EXPORT_FIXED_COLUMNS: Array<{
+// The exact Tally stock-item-creation column set (see Creation.xls) so an
+// exported file can be imported straight into Tally with no manual rework.
+// Duplicate labels ("Description", "Expiry Date") are Tally's own template,
+// reproduced as-is — read from the same extra key each time they recur,
+// since the catalogue never carries batch/opening-balance data anyway.
+// `extraKey` only needed when it differs from the displayed label (Tally's
+// own template has a trailing space on "Conversion1 ").
+export const TALLY_EXPORT_COLUMNS: Array<{
   label: string;
-  field: keyof ItemMasterRow;
+  field?: keyof ItemMasterRow;
+  extraKey?: string;
 }> = [
-  { label: 'Item Code', field: 'itemCode' },
-  { label: 'Item Name', field: 'itemName' },
-  { label: 'Brand', field: 'brand' },
-  { label: 'Catalogue No', field: 'catalogueNo' },
-  { label: 'SAP Item Code', field: 'sapItemCode' },
+  { label: 'Stock Item Name', field: 'itemName' },
   { label: 'Alias', field: 'alias' },
   { label: 'Main Group', field: 'mainGroup' },
   { label: 'Sub Group', field: 'subGroup' },
   { label: 'UOM', field: 'uom' },
+  { label: 'Alt UOM 1' },
+  { label: 'Alt UOM 2' },
+  { label: 'Alt UOM 3' },
+  { label: 'Conversion1 ', extraKey: 'Conversion1' },
+  { label: 'Conversion2' },
+  { label: 'Category' },
+  { label: 'Part No' },
+  { label: 'MRP Value' },
+  { label: 'Opening Quantity' },
+  { label: 'Opening Rate' },
+  { label: 'Op Godown Name' },
+  { label: 'Op Batch Name' },
+  { label: 'Expiry Date' },
+  { label: 'Mfg Date' },
+  { label: 'Op Batch Qty' },
+  { label: 'Op Batch Rate' },
+  { label: 'Opening Amount' },
+  { label: 'Applicable Date' },
+  { label: 'Std Selling Rate' },
+  { label: 'Description' },
+  { label: 'Remarks' },
+  { label: 'Maintain Batch Wise' },
+  { label: 'Track Date Of MFG' },
+  { label: 'Expiry Date' },
+  { label: 'Applicable From' },
   { label: 'HSN Description', field: 'hsnDescription' },
+  { label: 'HSN No' },
+  { label: 'Is Non GST Good' },
+  { label: 'Taxability' },
+  { label: 'Is Reverse Charge Applicable' },
+  { label: 'Is Ineligible for Input Credit' },
+  { label: 'Set / Alter Tax Details' },
+  { label: 'Integrated Tax' },
+  { label: 'Central Tax' },
+  { label: 'State Tax' },
+  { label: 'Cess Tax' },
+  { label: 'Type Of Supply' },
+  { label: 'M Unit Name 1' },
+  { label: 'Description' },
+  { label: 'M Unit Name 2' },
+  { label: 'Description' },
+  { label: 'OB Date' },
 ];
+
+export function tallyColumnValue(
+  row: ItemMasterRow,
+  col: (typeof TALLY_EXPORT_COLUMNS)[number],
+): string {
+  if (col.field) return (row[col.field] as string | null) ?? '';
+  return row.extra?.[col.extraKey ?? col.label] ?? '';
+}
 
 // "%" and "_" are LIKE wildcards, and "\" is the escape character itself.
 // Left unescaped, a search for "100%" matches every row that starts with
@@ -449,23 +482,14 @@ export class ItemSearchService {
     }));
   }
 
-  /** Header row = the fixed fields every item has, plus the extra keys
-   *  on the given rows in the order they were padded (sheet order).
-   *  Callers that want every known catalog column should pass rows from
-   *  getCurrentRowsForExport() / getFilteredRowsForExport(). */
+  /** Header row = the exact Tally stock-item-creation column set, in
+   *  Tally's own order, so the file can be imported straight into Tally. */
   buildExportWorkbook(rows: ItemMasterRow[]): ExcelJS.Workbook {
-    const extraKeys = extraKeysInOrder(rows);
-
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Items');
-    sheet.addRow([...EXPORT_FIXED_COLUMNS.map((c) => c.label), ...extraKeys]);
+    sheet.addRow(TALLY_EXPORT_COLUMNS.map((c) => c.label));
     for (const row of rows) {
-      sheet.addRow([
-        ...EXPORT_FIXED_COLUMNS.map(
-          (c) => (row[c.field] as string | null) ?? '',
-        ),
-        ...extraKeys.map((key) => row.extra?.[key] ?? ''),
-      ]);
+      sheet.addRow(TALLY_EXPORT_COLUMNS.map((c) => tallyColumnValue(row, c)));
     }
     sheet.getRow(1).font = { bold: true };
     sheet.columns.forEach((col) => {

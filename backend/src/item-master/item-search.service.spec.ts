@@ -1,8 +1,10 @@
 import {
   escapeLike,
-  extraKeysInOrder,
   mergeExportExtraKeys,
+  TALLY_EXPORT_COLUMNS,
+  tallyColumnValue,
 } from './item-search.service';
+import type { ItemMasterRow } from './entities/item-master-row.entity';
 
 // This function exists because of a real bug (found in a pre-demo audit,
 // not by inspection): an unescaped search for "%" matched the entire
@@ -52,13 +54,34 @@ describe('mergeExportExtraKeys', () => {
   });
 });
 
-describe('extraKeysInOrder', () => {
-  it('follows first-seen object key order rather than sorting', () => {
-    expect(
-      extraKeysInOrder([
-        { extra: { Zeta: 'z', Alpha: '' } },
-        { extra: { Alpha: 'a', Beta: 'b' } },
-      ]),
-    ).toEqual(['Zeta', 'Alpha', 'Beta']);
+describe('TALLY_EXPORT_COLUMNS / tallyColumnValue', () => {
+  it('matches Tally\'s own 47-column stock-item template exactly', () => {
+    expect(TALLY_EXPORT_COLUMNS).toHaveLength(47);
+    expect(TALLY_EXPORT_COLUMNS[0].label).toBe('Stock Item Name');
+    expect(TALLY_EXPORT_COLUMNS.at(-1)?.label).toBe('OB Date');
+  });
+
+  it('reads an entity-backed column straight from the row', () => {
+    const row = { itemName: 'MS Pipe', extra: {} } as ItemMasterRow;
+    const col = TALLY_EXPORT_COLUMNS.find((c) => c.label === 'Stock Item Name')!;
+    expect(tallyColumnValue(row, col)).toBe('MS Pipe');
+  });
+
+  it('reads a non-entity column from extra by its exact label', () => {
+    const row = { extra: { Category: 'OTHERS' } } as ItemMasterRow;
+    const col = TALLY_EXPORT_COLUMNS.find((c) => c.label === 'Category')!;
+    expect(tallyColumnValue(row, col)).toBe('OTHERS');
+  });
+
+  it('uses extraKey when the displayed label differs from the extra key (trailing-space column)', () => {
+    const row = { extra: { Conversion1: '1.6099' } } as ItemMasterRow;
+    const col = TALLY_EXPORT_COLUMNS.find((c) => c.label === 'Conversion1 ')!;
+    expect(tallyColumnValue(row, col)).toBe('1.6099');
+  });
+
+  it('renders blank, not "undefined", for a column the catalogue has no data for', () => {
+    const row = { extra: {} } as ItemMasterRow;
+    const col = TALLY_EXPORT_COLUMNS.find((c) => c.label === 'MRP Value')!;
+    expect(tallyColumnValue(row, col)).toBe('');
   });
 });
