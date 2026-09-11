@@ -33,3 +33,8 @@ docker-data/
 /n2.json
 /t2.json
 /t3.json
+
+# TLS private key for the Windows host's fixed CA - never commit
+# (the cert and root CA are public and fine to commit; the key is not)
+ops/windows/*.key
+ops/windows/*.pfx

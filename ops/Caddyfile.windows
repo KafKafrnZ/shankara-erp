@@ -1,0 +1,24 @@
+# Windows trial host — LAN HTTPS via a fixed, self-managed CA (NOT Caddy's
+# "tls internal" auto-managed CA). See FIX.md at repo root for why: Caddy's
+# internal CA regenerated itself twice (2026-09-05, 2026-09-10) whenever its
+# storage identity changed (e.g. moving to a SYSTEM service), breaking trust
+# on every office PC each time. This pins a cert/key pair that Caddy will
+# never regenerate on its own, so PCs only need to trust the CA once.
+# Nearby PCs must resolve erp.shankara.local to this machine's LAN IP
+# and trust ops\windows\shankara-root-ca.crt once.
+
+erp.shankara.local {
+	tls E:/shankara-erp/ops/windows/erp-shankara-local.crt E:/shankara-erp/ops/windows/erp-shankara-local.key
+
+	handle /api/* {
+		reverse_proxy 127.0.0.1:3000
+	}
+
+	handle {
+		root * E:/shankara-erp/frontend/dist
+		try_files {path} /index.html
+		file_server
+	}
+
+	encode gzip
+}
