@@ -45,6 +45,12 @@ async function bootstrap() {
   );
 
   const port = configService.get<number>('PORT') || 3000;
-  await app.listen(port);
+  // Loopback only: Caddy is the sole front door (ops/Caddyfile and
+  // ops/Caddyfile.windows both reverse_proxy to 127.0.0.1:3000).
+  // Binding every interface put the API on the office LAN over plain
+  // HTTP, and because TRUST_PROXY is on, requests arriving straight at
+  // :3000 could set their own X-Forwarded-For — spoofing the client IP
+  // the login throttle and the audit log both record.
+  await app.listen(port, '127.0.0.1');
 }
 bootstrap();
