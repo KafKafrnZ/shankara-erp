@@ -50,6 +50,15 @@ if ($dockerReady) {
 if ($dockerReady) {
   Step 'Containers (postgres/pgbouncer/redis)'
   Set-Location $Root
+  # Bare docker compose call, no stream-redirect operator on it: with
+  # $ErrorActionPreference = 'Stop' above, an explicit *>/2>&1/*>> redirect
+  # on a native command turns its stderr into an ErrorRecord that Stop then
+  # escalates into a script-terminating exception - confirmed live, this
+  # killed the run silently under the autostart scheduled task (which
+  # captures output via *>>) even though docker's only stderr output here
+  # is a harmless "version attribute obsolete" warning. A caller that needs
+  # this script's output in a file should use Start-Transcript, not stream
+  # redirection - see register-autostart.ps1.
   docker compose --env-file backend/.env up -d
   docker compose --env-file backend/.env ps
   Ok 'docker compose up'
@@ -92,7 +101,12 @@ if ($failures.Count -eq 0) {
   Write-Host '=================================================' -ForegroundColor Green
   Write-Host ' Shankara ERP is UP: https://erp.shankara.local' -ForegroundColor Green
   Write-Host '=================================================' -ForegroundColor Green
-  Start-Process 'https://erp.shankara.local'
+  # Best-effort only: confirmed live that this throws when there is no
+  # interactive desktop to open a browser into (the autostart scheduled
+  # task runs as SYSTEM in Session 0). That is not a real failure - the
+  # site is genuinely up, there is just nowhere to show it - so swallow it
+  # rather than let it flip the overall result to an error.
+  try { Start-Process 'https://erp.shankara.local' } catch {}
 } else {
   Write-Host '=================================================' -ForegroundColor Red
   Write-Host ' Something needs attention:' -ForegroundColor Red
