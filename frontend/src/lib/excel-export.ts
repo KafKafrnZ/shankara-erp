@@ -14,13 +14,12 @@ export interface ExportableRow {
   extra?: Record<string, string> | null;
 }
 
-// The exact Tally stock-item-creation column set (see Creation.xls) so a
-// pasted/exported sheet can be imported straight into Tally with no manual
-// rework. Duplicate labels ("Description", "Expiry Date") are Tally's own
-// template, reproduced as-is — read from the same extra key each time they
-// recur, since the catalogue never carries batch/opening-balance data
-// anyway. `extraKey` only needed when it differs from the displayed label
-// (Tally's own template has a trailing space on "Conversion1 ").
+// The Tally block shared by the office master sheets (American Standards
+// starts it at column AC; Absolute Enterprises at AK). Prefix columns to
+// the left of Stock Item Name are internal/SAP and are not copied.
+// Duplicate labels ("Expiry Date") are Tally's own, reproduced as-is.
+// `extraKey` only when the displayed label differs (trailing space on
+// "Conversion1 ").
 const TALLY_COLUMNS: Array<{
   label: string;
   key?: Exclude<keyof ExportableRow, 'extra'>;
@@ -68,11 +67,6 @@ const TALLY_COLUMNS: Array<{
   { label: 'State Tax' },
   { label: 'Cess Tax' },
   { label: 'Type Of Supply' },
-  { label: 'M Unit Name 1' },
-  { label: 'Description' },
-  { label: 'M Unit Name 2' },
-  { label: 'Description' },
-  { label: 'OB Date' },
 ];
 
 function tallyColumnValue(

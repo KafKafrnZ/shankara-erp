@@ -55,10 +55,16 @@ describe('mergeExportExtraKeys', () => {
 });
 
 describe('TALLY_EXPORT_COLUMNS / tallyColumnValue', () => {
-  it('matches Tally\'s own 47-column stock-item template exactly', () => {
-    expect(TALLY_EXPORT_COLUMNS).toHaveLength(47);
-    expect(TALLY_EXPORT_COLUMNS[0].label).toBe('Stock Item Name');
-    expect(TALLY_EXPORT_COLUMNS.at(-1)?.label).toBe('OB Date');
+  it('matches the 42-column Tally block from the office master sheets', () => {
+    expect(TALLY_EXPORT_COLUMNS).toHaveLength(42);
+    expect(TALLY_EXPORT_COLUMNS.map((c) => c.label).slice(0, 5)).toEqual([
+      'Stock Item Name',
+      'Alias',
+      'Main Group',
+      'Sub Group',
+      'UOM',
+    ]);
+    expect(TALLY_EXPORT_COLUMNS.at(-1)?.label).toBe('Type Of Supply');
   });
 
   it('reads an entity-backed column straight from the row', () => {

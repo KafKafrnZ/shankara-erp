@@ -14,9 +14,13 @@ describe('buildExcelPasteText', () => {
     const text = buildExcelPasteText(rows);
     const [header, row1] = text.split('\n');
     const cols = header.split('\t');
-    expect(cols).toHaveLength(47);
+    expect(cols).toHaveLength(42);
     expect(cols[0]).toBe('Stock Item Name');
-    expect(cols.at(-1)).toBe('OB Date');
+    expect(cols[1]).toBe('Alias');
+    expect(cols[2]).toBe('Main Group');
+    expect(cols[3]).toBe('Sub Group');
+    expect(cols[4]).toBe('UOM');
+    expect(cols.at(-1)).toBe('Type Of Supply');
     const cells = row1.split('\t');
     expect(cells[0]).toBe('Item One');
     expect(cells[2]).toBe('STEEL LONG');
@@ -47,7 +51,7 @@ describe('buildExcelPasteText', () => {
     const rows: ExportableRow[] = [{ itemCode: 'A', itemName: 'A' }];
     const text = buildExcelPasteText(rows);
     const cells = text.split('\n')[1].split('\t');
-    expect(cells).toHaveLength(47);
+    expect(cells).toHaveLength(42);
     expect(cells).not.toContain('null');
     expect(cells).not.toContain('undefined');
   });
@@ -58,8 +62,8 @@ describe('buildExcelPasteText', () => {
     ];
     const text = buildExcelPasteText(rows);
     const dataLine = text.split('\n')[1];
-    // Only the 47 Tally columns' worth of tabs should exist on this line —
+    // Only the 42 Tally columns' worth of tabs should exist on this line —
     // a literal tab in the cell would otherwise add an extra field.
-    expect(dataLine.split('\t')).toHaveLength(47);
+    expect(dataLine.split('\t')).toHaveLength(42);
   });
 });
