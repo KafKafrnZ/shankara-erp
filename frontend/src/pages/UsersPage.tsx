@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth.ts';
 import { api, isApiError } from '../lib/api.ts';
 import type { Role } from '../lib/types.ts';
+import { WorkingPulse } from '../components/WorkingPulse.tsx';
 
 type AdminUser = {
   id: string;
@@ -196,7 +197,7 @@ export function UsersPage() {
       )}
 
       {loading ? (
-        <p className="muted">Loading…</p>
+        <WorkingPulse label="Loading…" />
       ) : (
         <table className="results-table">
           <thead>

@@ -65,33 +65,37 @@ export function SheetDestination({
 
   return (
     <form className="sheet-dest" onSubmit={onSubmit}>
-      <p className="banner-title">Where should these items go?</p>
+      <p className="sheet-dest-kicker">Step 2 of 2</p>
+      <h2 className="sheet-dest-title">Where should these items go?</h2>
       <p className="muted">
-        A new sheet becomes its own live search file. Adding to an existing sheet
-        puts the items into that file.
+        Nothing is searchable until you pick. A new sheet is its own live file.
+        An existing sheet keeps one list.
       </p>
 
-      <fieldset className="sheet-dest-choices" disabled={busy}>
-        <label className="sheet-dest-choice">
-          <input
-            type="radio"
-            name="sheet-dest"
-            checked={mode === 'new'}
-            onChange={() => setMode('new')}
-          />
-          <span>Create a new sheet</span>
-        </label>
-        <label className={`sheet-dest-choice${noLive ? ' is-disabled' : ''}`}>
-          <input
-            type="radio"
-            name="sheet-dest"
-            checked={mode === 'existing'}
-            onChange={() => setMode('existing')}
-            disabled={!!noLive}
-          />
-          <span>Add to an existing live sheet</span>
-        </label>
-      </fieldset>
+      <div className="sheet-dest-cards">
+        <button
+          type="button"
+          className={`sheet-dest-card${mode === 'new' ? ' is-on' : ''}`}
+          disabled={busy}
+          onClick={() => setMode('new')}
+        >
+          <strong>New sheet</strong>
+          <span>Its own live search file. You name it.</span>
+        </button>
+        <button
+          type="button"
+          className={`sheet-dest-card${mode === 'existing' ? ' is-on' : ''}`}
+          disabled={busy || !!noLive}
+          onClick={() => setMode('existing')}
+        >
+          <strong>Existing sheet</strong>
+          <span>
+            {noLive
+              ? 'No live sheet yet — create a new one.'
+              : 'Add these rows into a file that is already live.'}
+          </span>
+        </button>
+      </div>
 
       {mode === 'new' && (
         <label className="field">
@@ -125,9 +129,6 @@ export function SheetDestination({
         </label>
       )}
 
-      {noLive && mode === 'existing' && (
-        <p className="muted">No live sheet yet — create a new one instead.</p>
-      )}
       {error && <p className="form-error" role="alert">{error}</p>}
 
       <div className="batch-actions">

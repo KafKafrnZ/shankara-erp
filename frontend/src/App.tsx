@@ -7,6 +7,7 @@ import { CatalogPage } from './pages/CatalogPage.tsx';
 import { CatalogUploadPage } from './pages/CatalogUploadPage.tsx';
 import { UsersPage } from './pages/UsersPage.tsx';
 import { AccountPage } from './pages/AccountPage.tsx';
+import { WorkingPulse } from './components/WorkingPulse.tsx';
 
 function loginNext(path: string, search: string) {
   const next = `${path}${search}`;
@@ -20,7 +21,11 @@ function RequireAuth() {
   const { user, loading } = useAuth();
   const location = useLocation();
   if (loading) {
-    return <div className="boot">Loading…</div>;
+    return (
+      <div className="boot">
+        <WorkingPulse size="lg" label="Loading…" />
+      </div>
+    );
   }
   if (!user) {
     return <Navigate to={loginNext(location.pathname, location.search)} replace />;
@@ -37,7 +42,11 @@ function RequireAuth() {
 function RootGate() {
   const { user, loading } = useAuth();
   if (loading) {
-    return <div className="boot">Loading…</div>;
+    return (
+      <div className="boot">
+        <WorkingPulse size="lg" label="Loading…" />
+      </div>
+    );
   }
   if (!user) {
     return <ChooserPage />;
@@ -48,7 +57,11 @@ function RootGate() {
 export default function App() {
   const { loading } = useAuth();
   if (loading) {
-    return <div className="boot">Loading…</div>;
+    return (
+      <div className="boot">
+        <WorkingPulse size="lg" label="Loading…" />
+      </div>
+    );
   }
 
   return (

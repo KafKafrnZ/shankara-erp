@@ -4,6 +4,7 @@ import { useAuth } from '../auth/useAuth.ts';
 import { fetchLiveSources } from '../lib/api.ts';
 import { formatAsOf } from '../lib/format.ts';
 import type { LiveSourceFile, LiveSources, PendingSourceFile } from '../lib/types.ts';
+import { WorkingPulse } from './WorkingPulse.tsx';
 
 type Props = {
   /** Bump after publish/hold so the pane refetches without a page change. */
@@ -124,7 +125,11 @@ export function LiveSourcePane({ refreshKey }: Props) {
                   <li key={file.batchId}>
                     <FileName file={file} href={uploadHref} canOpen={canOpen} />
                     <span className="source-file-meta">
-                      {file.status === 'processing' ? 'Reading the file…' : 'Waiting to make live'}
+                      {file.status === 'processing' ? (
+                        <WorkingPulse size="sm" label="Reading the file…" />
+                      ) : (
+                        'Waiting to make live'
+                      )}
                     </span>
                   </li>
                 ))}

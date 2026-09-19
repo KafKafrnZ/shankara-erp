@@ -9,6 +9,8 @@ import { ItemUploadFlow } from './ItemUploadFlow.tsx';
 import { buildExcelPasteText, exportToExcel } from '../lib/excel-export.ts';
 import type { ExportableRow } from '../lib/excel-export.ts';
 import { motion, useReducedMotion } from 'framer-motion';
+import { WorkingPulse } from './WorkingPulse.tsx';
+
 type Props = {
   /** null means "creating a new item" — no history to load, no code yet. */
   itemCode: string | null;
@@ -300,7 +302,7 @@ export function ItemDrawer({ itemCode, onClose, onCreated }: Props) {
           )}
 
           {!creating && error && <p className="empty-copy">{error}</p>}
-          {!creating && loading && !error && <p className="muted">Loading…</p>}
+          {!creating && loading && !error && <WorkingPulse label="Loading…" />}
           {/* The API returns [] (not a 404) for an unknown code, so without
               this the drawer opened completely blank — no data, no message. */}
           {!creating && !loading && !error && !current && (

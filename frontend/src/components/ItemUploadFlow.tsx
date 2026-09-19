@@ -7,6 +7,7 @@ import { isSpreadsheetFilename } from '../lib/spreadsheet-filename.ts';
 import { formatAsOf } from '../lib/format.ts';
 import { useAuth } from '../auth/useAuth.ts';
 import { SheetDestination } from './SheetDestination.tsx';
+import { WorkingPulse } from './WorkingPulse.tsx';
 import type { SheetPick } from './SheetDestination.tsx';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 
@@ -341,11 +342,15 @@ export function ItemUploadFlow({ persistParam, onPublished, onBatchChange }: Pro
           whileTap={prefersReducedMotion ? undefined : { scale: 0.99 }}
           layout={!prefersReducedMotion}
         >
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--muted)' }}>
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="17 8 12 3 7 8" />
-            <line x1="12" y1="3" x2="12" y2="15" />
-          </svg>
+          {uploading ? (
+            <WorkingPulse size="md" />
+          ) : (
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--muted)' }}>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+          )}
           <div>
             <p style={{ margin: 0, fontWeight: 500, fontSize: '1.1rem' }}>
               {file ? file.name : 'Click to browse or drop an Excel file here'}
@@ -390,7 +395,7 @@ export function ItemUploadFlow({ persistParam, onPublished, onBatchChange }: Pro
             {statusPill(batch.status)}
           </div>
           {batch.status === 'processing' && !pollTimeout && (
-            <p className="muted">Reading your file… you can wait here.</p>
+            <WorkingPulse label="Reading your file… you can wait here." />
           )}
           {batch.status === 'processing' && pollTimeout && (
             <div className="banner banner-critical">

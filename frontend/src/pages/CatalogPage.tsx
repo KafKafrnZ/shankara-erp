@@ -6,6 +6,7 @@ import { ItemDrawer } from '../components/ItemDrawer.tsx';
 import { LiveSourcePane } from '../components/LiveSourcePane.tsx';
 import { FilterBar } from '../components/FilterBar.tsx';
 import { SelectionTray } from '../components/SelectionTray.tsx';
+import { WorkingPulse } from '../components/WorkingPulse.tsx';
 import { exportFilteredToExcel } from '../lib/excel-export.ts';
 import { itemPrimaryKey } from '../lib/item-key.ts';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
@@ -67,8 +68,63 @@ function highlight(text: string | null | undefined, query: string) {
   );
 }
 
+const DENSITY_KEY = 'sb.catalogDensity';
+
+function ResultsHead() {
+  return (
+    <thead>
+      <tr>
+        <th className="td-select"><span className="visually-hidden">Select</span></th>
+        <th className="td-key">Code</th>
+        <th>Item Name</th>
+        <th>Brand</th>
+        <th>Group / Sub</th>
+        <th>UOM</th>
+      </tr>
+    </thead>
+  );
+}
+
+function CatalogSkeleton() {
+  return (
+    <div className="table-scroll">
+      <table className="results-table">
+        <ResultsHead />
+        <tbody>
+          {Array.from({ length: 8 }, (_, i) => (
+            <tr key={i}>
+              <td className="td-select"><span className="skel skel-short" /></td>
+              <td className="td-key"><span className="skel skel-code" /></td>
+              <td><span className="skel skel-name" /></td>
+              <td><span className="skel skel-short" /></td>
+              <td><span className="skel skel-name" /></td>
+              <td><span className="skel skel-short" /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function CatalogPage() {
   const [searchParams, setParams] = useSearchParams();
+  const [compact, setCompact] = useState(() => {
+    try {
+      return localStorage.getItem(DENSITY_KEY) === 'compact';
+    } catch {
+      return false;
+    }
+  });
+  const toggleDensity = () => {
+    setCompact((on) => {
+      const next = !on;
+      try {
+        localStorage.setItem(DENSITY_KEY, next ? 'compact' : 'comfortable');
+      } catch { /* private mode */ }
+      return next;
+    });
+  };
 
   const q = searchParams.get('q') || '';
   const mainGroup = searchParams.get('mainGroup') || '';
@@ -419,7 +475,7 @@ export function CatalogPage() {
   // focus, visible flash, felt "broken"). Same DOM shape throughout means
   // React just re-renders the parts that changed.
   return (
-    <div className={`catalog-page${itemCode || creatingNew ? ' has-drawer' : ''}`}>
+    <div className={`catalog-page${itemCode || creatingNew ? ' has-drawer' : ''}${compact ? ' is-compact' : ''}`}>
       <header className="catalog-header">
         <h1 className="catalog-title">Find an item</h1>
         <form className="catalog-search-form" onSubmit={onSubmit}>
@@ -450,6 +506,15 @@ export function CatalogPage() {
             </button>
           )}
         </form>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          aria-pressed={compact}
+          onClick={toggleDensity}
+          title={compact ? 'More space between rows' : 'Fit more rows on screen'}
+        >
+          {compact ? 'Comfortable' : 'Compact'}
+        </button>
         <button type="button" className="btn btn-secondary" onClick={openNewItem}>
           + New item
         </button>
@@ -474,26 +539,24 @@ export function CatalogPage() {
 
           <section className="results-main">
             {error && <p className="form-error" role="alert">{error}</p>}
+            {loading && (!result || result.hits.length === 0) && (
+              <WorkingPulse label="Searching…" />
+            )}
             {!loading && result && result.hits.length === 0 && (
               <div className="empty-state">
+                <WorkingPulse size="md" busy={false} />
                 <h2>No items matched</h2>
                 <p className="empty-copy">Try loosening the filters or search terms.</p>
               </div>
             )}
             {result && result.hits.length > 0 && (
               <>
+                {loading ? (
+                  <CatalogSkeleton />
+                ) : (
                 <div className="table-scroll">
-                  <table className={`results-table${loading ? ' is-loading' : ''}`}>
-                    <thead>
-                      <tr>
-                        <th className="td-select"><span className="visually-hidden">Select</span></th>
-                        <th>Code</th>
-                        <th>Item Name</th>
-                        <th>Brand</th>
-                        <th>Group / Sub</th>
-                        <th>UOM</th>
-                      </tr>
-                    </thead>
+                  <table className="results-table">
+                    <ResultsHead />
                     <tbody>
                       <AnimatePresence mode="wait">
                       {result.hits.map((hit, index) => {
@@ -506,7 +569,7 @@ export function CatalogPage() {
                           animate="animate"
                           exit="exit"
                           key={hit.id}
-                          className="clickable"
+                          className={`clickable${selected.has(hit.itemCode) ? ' is-selected' : ''}`}
                           tabIndex={0}
                           onClick={() => openItem(hit.itemCode)}
                           onKeyDown={(e) => onRowKey(e, hit.itemCode)}
@@ -544,6 +607,7 @@ export function CatalogPage() {
                     </tbody>
                   </table>
                 </div>
+                )}
                 <div className="pager">
                   <span className="muted">
                     {total > 0
