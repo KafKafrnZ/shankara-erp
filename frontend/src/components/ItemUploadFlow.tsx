@@ -117,6 +117,7 @@ export function ItemUploadFlow({ persistParam, onPublished, onBatchChange }: Pro
   const [busy, setBusy] = useState(false);
   const [expandedRaw, setExpandedRaw] = useState<number | null>(null);
   const [pollTimeout, setPollTimeout] = useState(false);
+  const [processingSince, setProcessingSince] = useState<number | null>(null);
   const [retryNonce, setRetryNonce] = useState(0);
   const [confirmingPublish, setConfirmingPublish] = useState(false);
   const [confirmingHold, setConfirmingHold] = useState(false);
@@ -142,16 +143,19 @@ export function ItemUploadFlow({ persistParam, onPublished, onBatchChange }: Pro
     let t: number;
     if (batch && batch.status === 'processing') {
       const startedAt = Date.now();
+      setProcessingSince(startedAt);
       t = window.setInterval(() => {
-        if (Date.now() - startedAt > 120_000) {
-          clearInterval(t);
-          setPollTimeout(true);
-          return;
-        }
+        // Past 2 minutes we flag it as slow but keep polling. Stopping here
+        // is what made a genuinely-still-running job look dead: the warning
+        // stayed up even after the job finished, until someone refreshed.
+        // The real master sheet takes ~75s, so 2 minutes is "unusual", not
+        // "broken".
+        if (Date.now() - startedAt > 120_000) setPollTimeout(true);
         loadBatch(Number(batch.id));
       }, 2000);
     } else {
       setPollTimeout(false);
+      setProcessingSince(null);
     }
     return () => clearInterval(t);
     // retryNonce is intentionally in the deps but otherwise unused here: a
@@ -394,13 +398,22 @@ export function ItemUploadFlow({ persistParam, onPublished, onBatchChange }: Pro
             <h2>Batch {batch.id}</h2>
             {statusPill(batch.status)}
           </div>
-          {batch.status === 'processing' && !pollTimeout && (
-            <WorkingPulse label="Reading your file… you can wait here." />
+          {batch.status === 'processing' && (
+            <WorkingPulse
+              label="Reading your file… you can wait here."
+              since={processingSince ?? undefined}
+            />
           )}
           {batch.status === 'processing' && pollTimeout && (
-            <div className="banner banner-critical">
-              <p className="banner-title">Still processing after 2 minutes</p>
-              <p>This may indicate a problem. You can retry it directly below, or refresh the page to keep checking.</p>
+            <div className="banner banner-warning">
+              <p className="banner-title">This one is taking a while</p>
+              <p>
+                Big master sheets do take a few minutes — the largest one on
+                record is about 90 seconds for 193,000 rows. This page keeps
+                checking on its own and will move on by itself when it
+                finishes, so you can leave it open. Retry only if it sits here
+                for several more minutes.
+              </p>
               <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => void onRetry()}>
                 {busy ? 'Retrying…' : 'Retry'}
               </button>

@@ -90,6 +90,54 @@ button {
   margin: 0;
 }
 
+.working-pulse-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.working-pulse-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Indeterminate on purpose: the parse job reports nothing until it commits,
+   so a percentage would be invented. The moving bar plus the ticking clock
+   next to it answer the only question being asked - is this still alive. */
+.working-pulse-track {
+  position: relative;
+  flex: 1 1 180px;
+  max-width: 240px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.working-pulse-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 40%;
+  border-radius: inherit;
+  background: var(--accent);
+  animation: wp-progress 1.6s ease-in-out infinite;
+}
+
+@keyframes wp-progress {
+  from { left: -40%; }
+  to { left: 100%; }
+}
+
+.working-pulse-elapsed {
+  flex: none;
+  font-size: 0.85em;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
 .working-pulse-scene {
   flex: none;
   display: block;
@@ -216,6 +264,14 @@ button {
   .wp-sheet, .wp-header, .wp-mark, .wp-shadow { transform: none; }
   .wp-rows line { stroke-dashoffset: 0; }
   .wp-scan { display: none; }
+  /* Bar holds still; the elapsed clock beside it still ticks, so the
+     "is this alive" question is answered without motion. */
+  .working-pulse-fill {
+    animation: none;
+    left: 0;
+    width: 100%;
+    opacity: 0.35;
+  }
 }
 
 /* ——— Header ——— */

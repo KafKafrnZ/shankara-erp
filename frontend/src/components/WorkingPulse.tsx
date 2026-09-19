@@ -1,13 +1,34 @@
+import { useEffect, useState } from 'react';
+
 type Props = {
   label?: string;
   size?: 'sm' | 'md' | 'lg';
   /** False = settled sheet (empty states). Default true = looping wait. */
   busy?: boolean;
+  /** Epoch ms the current work started. Adds a moving bar + elapsed clock
+   *  under the label, so a long read reads as alive rather than wedged. */
+  since?: number;
 };
+
+function formatElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+}
 
 /** Line-drawn catalog sheet + the red Shankara skyline, same assemble-and-
  *  settle language as the game-console Lottie — no Lottie player. */
-export function WorkingPulse({ label, size = 'md', busy = true }: Props) {
+export function WorkingPulse({ label, size = 'md', busy = true, since }: Props) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (since === undefined) return;
+    setNow(Date.now());
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, [since]);
+
   return (
     <div
       className={`working-pulse working-pulse-${size}${busy ? '' : ' is-idle'}`}
@@ -36,7 +57,21 @@ export function WorkingPulse({ label, size = 'md', busy = true }: Props) {
           <path d="M8.5 3.2l4 4.8H4.5z" />
         </g>
       </svg>
-      {label ? <span className="working-pulse-label">{label}</span> : null}
+      {label || since !== undefined ? (
+        <div className="working-pulse-body">
+          {label ? <span className="working-pulse-label">{label}</span> : null}
+          {since !== undefined ? (
+            <div className="working-pulse-progress">
+              <div className="working-pulse-track">
+                <div className="working-pulse-fill" />
+              </div>
+              <span className="working-pulse-elapsed">
+                {formatElapsed(now - since)}
+              </span>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
