@@ -192,16 +192,58 @@ async function* rowsFromMatrix(matrix: any[][]): AsyncIterable<SheetRow> {
   }
 }
 
-// Not actually streaming: ExcelJS's WorkbookReader reads zip entries in
-// physical file order, and if a writer puts xl/sharedStrings.xml after the
-// worksheet data (confirmed live: a real "Sample Material.xlsx" export did
-// this), it can't resolve text in time — cells come through as unresolved
-// {sharedString: n} refs, which silently normalize to "" everywhere a
-// header is expected, so no layout ever matches. Loading the whole workbook
-// first guarantees every string resolves regardless of part order. These
-// files are tens of thousands of rows, not millions — well inside the
-// 1.5GB heap this host already allocates the backend.
 async function parseXlsxStream(filePath: string): Promise<ParseResult> {
+  const result = emptyResult();
+  const workbook = new ExcelJS.stream.xlsx.WorkbookReader(filePath, {
+    worksheets: 'emit',
+    hyperlinks: 'emit',
+  });
+
+  for await (const worksheetReader of workbook) {
+    const sheetName =
+      (worksheetReader as any).name || `Sheet${result.totalSheets + 1}`;
+    async function* excelRows(): AsyncIterable<SheetRow> {
+      for await (const row of worksheetReader) {
+        const values = Array.isArray(row.values) ? row.values.slice(1) : [];
+        yield { values, number: row.number };
+      }
+    }
+    await ingestSheet(result, sheetName, excelRows());
+  }
+  return result;
+}
+
+// Two real, confirmed-live bugs pull in opposite directions, so which
+// reader to use is decided by file size up front rather than always
+// picking one:
+//
+// 1. ExcelJS's streaming WorkbookReader doesn't reliably resolve every
+//    cell. When xl/sharedStrings.xml comes after the worksheet data in the
+//    zip (a real "Sample Material.xlsx" export did this), the deferred
+//    replay that's supposed to fix this doesn't actually resolve the
+//    strings - {sharedString: n} refs silently become "" everywhere a
+//    header is expected. Separately, streaming never resolves a cell's
+//    number format, so a genuinely Date-typed cell whose header doesn't
+//    happen to match the date-detection regex (see sheet-date.ts) comes
+//    through as a raw serial number instead of a real date - confirmed
+//    live via a direct cell inspection (numFmt is undefined even for a
+//    cell written with a real Date value).
+// 2. The buffered ExcelJS.Workbook().xlsx.readFile() API resolves both of
+//    those correctly - but loads the whole workbook into memory. A real
+//    15.5MB / 193k-row production upload crashed the whole backend with
+//    "JavaScript heap out of memory" this way (confirmed live from
+//    ops/windows/logs/backend-service.err.log) - repeatedly, since NSSM
+//    auto-restarts on crash and pg-boss auto-retries the same job.
+//
+// Streaming that same 193k-row file resolves every shared string
+// correctly and uses ~200MB RSS (tested in isolation) - the ordering bug
+// above only actually bit a small file in practice, and every unit-test
+// fixture in this repo is small. So: buffer small files (correct on both
+// fronts, cannot realistically OOM), stream large ones (memory-safe,
+// accepting the narrow non-matching-header date gap over a crash).
+const BUFFERED_MAX_BYTES = 5 * 1024 * 1024;
+
+async function parseXlsxBuffered(filePath: string): Promise<ParseResult> {
   const result = emptyResult();
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.readFile(filePath);
@@ -221,6 +263,13 @@ async function parseXlsxStream(filePath: string): Promise<ParseResult> {
 
 async function* rowsFromArray(rows: SheetRow[]): AsyncIterable<SheetRow> {
   for (const row of rows) yield row;
+}
+
+async function parseXlsxBySize(filePath: string): Promise<ParseResult> {
+  const { size } = fs.statSync(filePath);
+  return size <= BUFFERED_MAX_BYTES
+    ? parseXlsxBuffered(filePath)
+    : parseXlsxStream(filePath);
 }
 
 async function parseXlsFile(filePath: string): Promise<ParseResult> {
@@ -272,7 +321,7 @@ export async function parseItemMasterFile(
       return parseCsvFile(filePath);
     case 'xlsx':
     default:
-      return parseXlsxStream(filePath);
+      return parseXlsxBySize(filePath);
   }
 }
 
