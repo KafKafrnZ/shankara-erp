@@ -79,21 +79,35 @@ function Start-IfNeeded([string]$Name) {
   if ($svc.Status -eq 'Running') { Ok "$Name running" } else { Fail "$Name did not start (status: $($svc.Status))" }
 }
 
+function Wait-Health([string]$Label, [string]$Uri, [int]$TimeoutSeconds = 30) {
+  # A single check right after starting the services is not reliable: a
+  # genuine cold start (fresh containers + fresh Nest process) can take
+  # longer than a fixed few-second sleep - confirmed live, this reported a
+  # false FAILED once even though the backend came up fine 15s later.
+  # Retry for a bounded window instead of a one-shot check.
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  $lastError = $null
+  while ((Get-Date) -lt $deadline) {
+    try {
+      $h = Invoke-RestMethod -Uri $Uri -TimeoutSec 10
+      if ($h.status -eq 'ok') { Ok "${Label}: $($h | ConvertTo-Json -Compress)"; return }
+      $lastError = "unhealthy: $($h | ConvertTo-Json -Compress)"
+    } catch {
+      $lastError = "unreachable: $($_.Exception.Message)"
+    }
+    Start-Sleep -Seconds 3
+  }
+  Fail "$Label $lastError (after ${TimeoutSeconds}s)"
+}
+
 if ($dockerReady) {
   Step 'Backend + Caddy services'
   Start-IfNeeded 'ShankaraERP-Backend'
   Start-IfNeeded 'ShankaraERP-Caddy'
-  Start-Sleep -Seconds 5
 
   Step 'Health checks'
-  try {
-    $h1 = Invoke-RestMethod -Uri 'http://127.0.0.1:3000/api/health' -TimeoutSec 10
-    if ($h1.status -eq 'ok') { Ok "backend: $($h1 | ConvertTo-Json -Compress)" } else { Fail "backend unhealthy: $($h1 | ConvertTo-Json -Compress)" }
-  } catch { Fail "backend unreachable: $($_.Exception.Message)" }
-  try {
-    $h2 = Invoke-RestMethod -Uri 'https://erp.shankara.local/api/health' -TimeoutSec 10
-    if ($h2.status -eq 'ok') { Ok "site (https://erp.shankara.local): $($h2 | ConvertTo-Json -Compress)" } else { Fail "site unhealthy: $($h2 | ConvertTo-Json -Compress)" }
-  } catch { Fail "site unreachable: $($_.Exception.Message)" }
+  Wait-Health 'backend' 'http://127.0.0.1:3000/api/health'
+  Wait-Health 'site (https://erp.shankara.local)' 'https://erp.shankara.local/api/health'
 }
 
 Write-Host ''
