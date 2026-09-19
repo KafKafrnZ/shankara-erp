@@ -15,16 +15,14 @@ import { ManualItemDto } from './dto/manual-item.dto';
 type AuthedRequest = Request & { user: any };
 
 // Add / edit / delete one catalog row without a full spreadsheet re-upload.
-// Every write here goes through ItemMasterService's normal batch->publish
-// pipeline (see manualUpsert/manualDelete) so it's versioned and audited
-// exactly like an upload — just steward-only and immediate, since there's
-// nothing to hold for review on a single typed-in row.
+// Create is open to every signed-in role (+ New item). Edit uses this same
+// POST and is steward-gated in the UI; delete stays steward-only here.
 @Controller('item-master/rows')
-@Roles('steward')
 export class ItemMasterManualController {
   constructor(private readonly itemMasterService: ItemMasterService) {}
 
   @Post()
+  @Roles('steward', 'finance', 'branch')
   @HttpCode(200)
   async upsert(@Body() body: ManualItemDto, @Req() req: AuthedRequest) {
     return this.itemMasterService.manualUpsert(
@@ -36,6 +34,7 @@ export class ItemMasterManualController {
   }
 
   @Delete(':itemCode')
+  @Roles('steward')
   @HttpCode(200)
   async remove(@Param('itemCode') itemCode: string, @Req() req: AuthedRequest) {
     return this.itemMasterService.manualDelete(

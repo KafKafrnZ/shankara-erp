@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { api, isApiError } from '../lib/api.ts';
+import { SheetDestination } from './SheetDestination.tsx';
+import type { SheetPick } from './SheetDestination.tsx';
 
 export type ItemFormValues = {
   itemCode: string;
@@ -38,6 +40,7 @@ export function ItemEditForm({ initial, lockItemCode, onCancel, onSaved }: Props
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [knownFields, setKnownFields] = useState<string[]>([]);
+  const [pickingSheet, setPickingSheet] = useState(false);
   const merged = useRef(false);
 
   // Every extra column the live sheet has anywhere, not just the ones this
@@ -84,8 +87,7 @@ export function ItemEditForm({ initial, lockItemCode, onCancel, onSaved }: Props
       extra: prev.extra.map((row, idx) => (idx === i ? { ...row, [field]: v } : row)),
     }));
 
-  const onSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const save = async (pick?: SheetPick) => {
     setError('');
     const itemCode = values.itemCode.trim();
     const itemName = values.itemName.trim();
@@ -114,6 +116,7 @@ export function ItemEditForm({ initial, lockItemCode, onCancel, onSaved }: Props
           uom: values.uom.trim() || undefined,
           hsnDescription: values.hsnDescription.trim() || undefined,
           extra: Object.keys(extra).length > 0 ? extra : undefined,
+          ...(pick || {}),
         }),
       });
       onSaved(itemCode);
@@ -123,6 +126,35 @@ export function ItemEditForm({ initial, lockItemCode, onCancel, onSaved }: Props
       setSaving(false);
     }
   };
+
+  const onSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (!values.itemCode.trim() || !values.itemName.trim()) {
+      setError('Item code and item name are required');
+      return;
+    }
+    if (!lockItemCode) {
+      setPickingSheet(true);
+      return;
+    }
+    void save();
+  };
+
+  if (pickingSheet) {
+    return (
+      <div className="item-edit-form">
+        {error && <p className="form-error" role="alert">{error}</p>}
+        <SheetDestination
+          defaultNewName=""
+          confirmLabel="Add item"
+          busy={saving}
+          onConfirm={(pick) => void save(pick)}
+          onCancel={() => setPickingSheet(false)}
+        />
+      </div>
+    );
+  }
 
   return (
     <form className="item-edit-form" onSubmit={(e) => void onSubmit(e)}>
@@ -233,7 +265,7 @@ export function ItemEditForm({ initial, lockItemCode, onCancel, onSaved }: Props
 
       <div className="item-edit-actions">
         <button type="submit" className="btn btn-primary" disabled={saving}>
-          {saving ? 'Saving…' : 'Save'}
+          {saving ? 'Saving…' : lockItemCode ? 'Save' : 'Add item'}
         </button>
         <button type="button" className="btn btn-secondary" onClick={onCancel} disabled={saving}>
           Cancel

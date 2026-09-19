@@ -28,23 +28,21 @@ export class MetaService {
 
     const itemLive = await this.dataSource.query(itemLiveSql);
 
-    let itemPending: Array<Record<string, unknown>> = [];
-    if (_user.role === 'steward') {
-      const pendingItemSql = `
-        SELECT
-          b.id AS "batchId",
-          COALESCE(sf.original_name, 'Manual edit') AS "originalName",
-          b.status AS status,
-          b.accepted_rows AS "acceptedRows",
-          b.uploaded_at AS "uploadedAt"
-        FROM item_master_batch b
-        LEFT JOIN source_file sf ON sf.id = b.source_file_id
-        WHERE b.status IN ('held', 'processing')
-        ORDER BY b.uploaded_at DESC
-        LIMIT 20
-      `;
-      itemPending = await this.dataSource.query(pendingItemSql);
-    }
+    const pendingItemSql = `
+      SELECT
+        b.id AS "batchId",
+        COALESCE(sf.original_name, 'Manual edit') AS "originalName",
+        b.status AS status,
+        b.accepted_rows AS "acceptedRows",
+        b.uploaded_at AS "uploadedAt"
+      FROM item_master_batch b
+      LEFT JOIN source_file sf ON sf.id = b.source_file_id
+      WHERE b.status IN ('held', 'processing')
+      ORDER BY b.uploaded_at DESC
+      LIMIT 20
+    `;
+    const itemPending: Array<Record<string, unknown>> =
+      await this.dataSource.query(pendingItemSql);
 
     return {
       items: {

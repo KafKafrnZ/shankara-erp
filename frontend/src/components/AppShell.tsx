@@ -86,18 +86,16 @@ export function AppShell() {
                 </>
               )}
             </NavLink>
-            {user.role === 'steward' && (
-              <NavLink to="/catalog/upload" className={({ isActive }) => (isActive ? 'nav-link nav-link-catalog active' : 'nav-link nav-link-catalog')}>
-                {({ isActive }) => (
-                  <>
-                    {isActive && <motion.div layoutId="nav-bg" style={{ position: 'absolute', inset: 0, background: 'var(--ink)', borderRadius: '999px', zIndex: -1 }} transition={navBgTransition} />}
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                      <UploadIcon /> Upload items
-                    </span>
-                  </>
-                )}
-              </NavLink>
-            )}
+            <NavLink to="/catalog/upload" className={({ isActive }) => (isActive ? 'nav-link nav-link-catalog active' : 'nav-link nav-link-catalog')}>
+              {({ isActive }) => (
+                <>
+                  {isActive && <motion.div layoutId="nav-bg" style={{ position: 'absolute', inset: 0, background: 'var(--ink)', borderRadius: '999px', zIndex: -1 }} transition={navBgTransition} />}
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <UploadIcon /> Upload items
+                  </span>
+                </>
+              )}
+            </NavLink>
           </nav>
         </div>
         <div className="header-right">

@@ -1,9 +1,13 @@
+import { Type } from 'class-transformer';
 import {
+  IsIn,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   IsObject,
   Length,
+  ValidateIf,
 } from 'class-validator';
 
 // Mirrors ParsedItemRow — same required fields the file-upload parsers
@@ -55,4 +59,19 @@ export class ManualItemDto {
   @IsOptional()
   @IsObject()
   extra?: Record<string, string>;
+
+  @IsOptional()
+  @IsIn(['new', 'existing'])
+  destination?: 'new' | 'existing';
+
+  @ValidateIf((o: ManualItemDto) => o.destination === 'new')
+  @IsOptional()
+  @IsString()
+  @Length(1, 200)
+  sheetName?: string;
+
+  @ValidateIf((o: ManualItemDto) => o.destination === 'existing')
+  @Type(() => Number)
+  @IsInt()
+  targetBatchId?: number;
 }

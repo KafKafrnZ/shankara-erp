@@ -1338,6 +1338,33 @@ mark.search-hl {
   border-top: 1px solid var(--line);
 }
 
+.sheet-dest {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.sheet-dest-choices {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sheet-dest-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+}
+
+.sheet-dest-choice.is-disabled {
+  opacity: 0.5;
+}
+
 .item-create-tabs {
   display: flex;
   gap: 8px;

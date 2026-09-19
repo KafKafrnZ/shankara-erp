@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Brackets } from 'typeorm';
 import * as ExcelJS from 'exceljs';
 import { ItemMasterRow } from './entities/item-master-row.entity';
+import { excelDateForExport, isDateColumnLabel } from '../common/sheet-date';
 
 /** Sheet-header order first (including columns that were blank on every
  *  row), then any extra keys that only exist on live rows, alphabetically.
@@ -95,9 +96,11 @@ export const TALLY_EXPORT_COLUMNS: Array<{
 export function tallyColumnValue(
   row: ItemMasterRow,
   col: (typeof TALLY_EXPORT_COLUMNS)[number],
-): string {
-  if (col.field) return (row[col.field] as string | null) ?? '';
-  return row.extra?.[col.extraKey ?? col.label] ?? '';
+): string | Date {
+  const raw = col.field
+    ? ((row[col.field] as string | null) ?? '')
+    : (row.extra?.[col.extraKey ?? col.label] ?? '');
+  return excelDateForExport(col.extraKey ?? col.label, raw);
 }
 
 // "%" and "_" are LIKE wildcards, and "\" is the escape character itself.
@@ -492,6 +495,11 @@ export class ItemSearchService {
       sheet.addRow(TALLY_EXPORT_COLUMNS.map((c) => tallyColumnValue(row, c)));
     }
     sheet.getRow(1).font = { bold: true };
+    TALLY_EXPORT_COLUMNS.forEach((col, i) => {
+      if (isDateColumnLabel(col.extraKey ?? col.label)) {
+        sheet.getColumn(i + 1).numFmt = 'dd-mm-yyyy';
+      }
+    });
     sheet.columns.forEach((col) => {
       col.width = 20;
     });

@@ -6,6 +6,8 @@ import { describeItemBatchError, describeItemSkip } from '../lib/item-skip-codes
 import { isSpreadsheetFilename } from '../lib/spreadsheet-filename.ts';
 import { formatAsOf } from '../lib/format.ts';
 import { useAuth } from '../auth/useAuth.ts';
+import { SheetDestination } from './SheetDestination.tsx';
+import type { SheetPick } from './SheetDestination.tsx';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 
 interface UploadResponse {
@@ -38,6 +40,7 @@ interface ItemBatch {
   errorSummary: string | null;
   uploadedAt: string;
   mergeSummary?: MergeSummary | null;
+  sourceFile?: { originalName: string } | null;
 }
 
 const ACCEPT = [
@@ -74,10 +77,8 @@ type Props = {
   onBatchChange?: (batch: { id: string; status: ItemBatch['status'] } | null) => void;
 };
 
-// The full upload → process → review skips → publish/hold flow. Shared by
-// the dedicated /catalog/upload page and the "+ New item" drawer's "Upload
-// Excel" tab — same merge-into-live-catalog pipeline either way, just two
-// entry points onto it.
+// The full upload → process → pick new/existing sheet → publish/hold flow.
+// Shared by /catalog/upload and the "+ New item" drawer's Excel tab.
 export function ItemUploadFlow({ persistParam, onPublished, onBatchChange }: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [localBatchId, setLocalBatchId] = useState<number | null>(null);
@@ -209,11 +210,11 @@ export function ItemUploadFlow({ persistParam, onPublished, onBatchChange }: Pro
 
   if (!user) return null;
 
-  if (user.role !== 'steward' || forbidden) {
+  if (forbidden) {
     return (
       <div className="empty-state">
         <h2>No access</h2>
-        <p className="empty-copy">Only stewards can upload item catalogs.</p>
+        <p className="empty-copy">You don't have permission to upload item catalogs.</p>
       </div>
     );
   }
@@ -275,14 +276,17 @@ export function ItemUploadFlow({ persistParam, onPublished, onBatchChange }: Pro
   };
 
   const canPublish = batch?.status === 'held';
-  const canHold = batch?.status === 'published';
+  const canHold = user.role === 'steward' && batch?.status === 'published';
 
-  const onPublish = async () => {
+  const onPublish = async (pick: SheetPick) => {
     if (!batch || !canPublish) return;
     setBusy(true);
     setError('');
     try {
-      const next = await api<ItemBatch>(`/api/item-batches/${batch.id}/publish`, { method: 'POST' });
+      const next = await api<ItemBatch>(`/api/item-batches/${batch.id}/publish`, {
+        method: 'POST',
+        body: JSON.stringify(pick),
+      });
       setBatch(next);
     } catch (err) {
       setError(isApiError(err) ? err.message : 'Publish failed');
@@ -466,20 +470,15 @@ export function ItemUploadFlow({ persistParam, onPublished, onBatchChange }: Pro
               instead of firing immediately. */}
           {canPublish && confirmingPublish && (
             <div className="banner banner-warning">
-              <p className="banner-title">Publish {batch.acceptedRows.toLocaleString()} items to the live catalog?</p>
-              <p>
-                Alias is the identity. Matching Aliases in the live catalog are updated in place
-                (not added twice). Duplicate Aliases inside this file were folded to the last row.
-                Everyone searching items will see the result right away.
-              </p>
-              <div className="batch-actions">
-                <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void onPublish()}>
-                  {busy ? 'Working…' : 'Yes, make live'}
-                </button>
-                <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setConfirmingPublish(false)}>
-                  Cancel
-                </button>
-              </div>
+              <SheetDestination
+                defaultNewName={
+                  (file?.name || batch.sourceFile?.originalName || '').replace(/\.[^.]+$/, '')
+                }
+                confirmLabel={`Add ${batch.acceptedRows.toLocaleString('en-IN')} items`}
+                busy={busy}
+                onConfirm={(pick) => void onPublish(pick)}
+                onCancel={() => setConfirmingPublish(false)}
+              />
             </div>
           )}
 
@@ -507,7 +506,7 @@ export function ItemUploadFlow({ persistParam, onPublished, onBatchChange }: Pro
                 disabled={busy}
                 onClick={() => setConfirmingPublish(true)}
               >
-                Merge into catalog
+                Add items
               </button>
               )}
               {canHold && (

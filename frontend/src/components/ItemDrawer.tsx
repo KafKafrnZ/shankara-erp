@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, isApiError } from '../lib/api.ts';
-import { formatDate } from '../lib/format.ts';
+import { formatDate, formatSheetCell } from '../lib/format.ts';
 import { itemPrimaryKey } from '../lib/item-key.ts';
 import { useAuth } from '../auth/useAuth.ts';
 import { ItemEditForm, emptyItemFormValues } from './ItemEditForm.tsx';
@@ -289,9 +289,9 @@ export function ItemDrawer({ itemCode, onClose, onCreated }: Props) {
               ) : (
                 <>
                   <p className="muted" style={{ marginBottom: '16px' }}>
-                    Upload a sheet with any number of items — codes that already exist in the live
-                    catalog get updated, new codes get added. Nothing changes until you review it and
-                    choose to merge it in.
+                    Upload a sheet with any number of items. After it is read you choose whether
+                    these go into a new live sheet or an existing one. Matching Aliases update in
+                    place — nothing is live until you confirm.
                   </p>
                   <ItemUploadFlow onPublished={onClose} />
                 </>
@@ -387,7 +387,7 @@ export function ItemDrawer({ itemCode, onClose, onCreated }: Props) {
                   {Object.entries(current.extra || {}).map(([field, value]) => (
                     <div key={field}>
                       <dt>{field}</dt>
-                      <dd>{value || '—'}</dd>
+                      <dd>{formatSheetCell(field, value)}</dd>
                     </div>
                   ))}
                 </dl>

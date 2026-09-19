@@ -121,11 +121,17 @@ describe('Auth (e2e)', () => {
     await request(app.getHttpServer()).post('/api/item-uploads').expect(401);
   });
 
-  it('finance cannot hit a steward-only upload', async () => {
-    await request(app.getHttpServer())
+  it('finance can upload an item catalog', async () => {
+    const path = require('path');
+    const fixturePath = path.resolve(
+      __dirname,
+      '../fixtures/item-master/test-fixture-1.xlsx',
+    );
+    const res = await request(app.getHttpServer())
       .post('/api/item-uploads')
       .set('Authorization', `Bearer ${financeToken}`)
-      .expect(403);
+      .attach('file', fixturePath);
+    expect([200, 202]).toContain(res.status);
   });
 
   it('steward CAN hit a steward-only upload', async () => {

@@ -59,9 +59,9 @@ export function LiveSourcePane({ refreshKey }: Props) {
   if (!user || !data) return null;
 
   const live = data.items.live;
-  const pending = user.role === 'steward' ? data.items.pending : [];
+  const pending = data.items.pending;
   const uploadHref = '/catalog/upload';
-  const canOpen = user.role === 'steward';
+  const canOpen = true;
 
   if (live.length === 0 && pending.length === 0) {
     return (

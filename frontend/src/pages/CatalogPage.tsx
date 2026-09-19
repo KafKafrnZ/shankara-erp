@@ -8,7 +8,6 @@ import { FilterBar } from '../components/FilterBar.tsx';
 import { SelectionTray } from '../components/SelectionTray.tsx';
 import { exportFilteredToExcel } from '../lib/excel-export.ts';
 import { itemPrimaryKey } from '../lib/item-key.ts';
-import { useAuth } from '../auth/useAuth.ts';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 
 interface SearchHit {
@@ -70,8 +69,6 @@ function highlight(text: string | null | undefined, query: string) {
 
 export function CatalogPage() {
   const [searchParams, setParams] = useSearchParams();
-  const { user } = useAuth();
-  const isSteward = user?.role === 'steward';
 
   const q = searchParams.get('q') || '';
   const mainGroup = searchParams.get('mainGroup') || '';
@@ -453,11 +450,9 @@ export function CatalogPage() {
             </button>
           )}
         </form>
-        {isSteward && (
-          <button type="button" className="btn btn-secondary" onClick={openNewItem}>
-            + New item
-          </button>
-        )}
+        <button type="button" className="btn btn-secondary" onClick={openNewItem}>
+          + New item
+        </button>
       </header>
 
       <LiveSourcePane />

@@ -78,13 +78,6 @@ describe('ItemMasterController (e2e)', () => {
       path.join(__dirname, '../fixtures/item-master/test-fixture-1.xlsx'),
     );
 
-    // Non-steward gets 403
-    await request(app.getHttpServer())
-      .post('/api/item-uploads')
-      .set('Authorization', `Bearer ${financeToken}`)
-      .attach('file', xlsxPath)
-      .expect(403);
-
     // Steward upload
     const res = await request(app.getHttpServer())
       .post('/api/item-uploads')
@@ -134,18 +127,16 @@ describe('ItemMasterController (e2e)', () => {
       .get('/api/meta/live-sources')
       .set('Authorization', `Bearer ${financeToken}`)
       .expect(200);
-    expect(financeHeldSources.body.items.pending).toEqual([]);
     expect(
-      financeHeldSources.body.items.live.some(
+      financeHeldSources.body.items.pending.some(
         (f: { originalName: string }) => f.originalName === originalName,
       ),
-    ).toBe(false);
+    ).toBe(true);
 
-    // finance/branch calling GET on held batch gets 404
     await request(app.getHttpServer())
       .get(`/api/item-batches/${batchId}`)
       .set('Authorization', `Bearer ${financeToken}`)
-      .expect(404);
+      .expect(200);
 
     // Publish
     await request(app.getHttpServer())
@@ -268,7 +259,11 @@ describe('ItemMasterController (e2e)', () => {
         (f: { liveRows: number }) => f.liveRows > 0,
       ),
     ).toBe(true);
-    expect(financeLive.body.items.pending).toEqual([]);
+    expect(
+      financeLive.body.items.pending.some(
+        (f: { originalName: string }) => f.originalName === originalName,
+      ),
+    ).toBe(false);
 
     // Duplicate upload
     const dupRes = await request(app.getHttpServer())
@@ -332,12 +327,6 @@ describe('ItemMasterController (e2e)', () => {
       [batchId],
     );
 
-    // Non-steward can't retry
-    await request(app.getHttpServer())
-      .post(`/api/item-batches/${batchId}/retry`)
-      .set('Authorization', `Bearer ${financeToken}`)
-      .expect(403);
-
     // Re-uploading the identical file auto-heals a stuck batch instead of
     // just reporting an inert duplicate.
     const retryRes = await request(app.getHttpServer())
@@ -370,13 +359,6 @@ describe('ItemMasterController (e2e)', () => {
 
   it('manual add, edit, and delete a catalog row — versioned like an upload', async () => {
     const itemCode = `MANUAL-${Date.now()}`;
-
-    // Non-steward can't create
-    await request(app.getHttpServer())
-      .post('/api/item-master/rows')
-      .set('Authorization', `Bearer ${financeToken}`)
-      .send({ itemCode, itemName: 'Manual Test Item' })
-      .expect(403);
 
     // Create
     const createRes = await request(app.getHttpServer())
@@ -472,5 +454,64 @@ describe('ItemMasterController (e2e)', () => {
       .delete(`/api/item-master/rows/${itemCode}`)
       .set('Authorization', `Bearer ${stewardToken}`)
       .expect(404);
+  });
+
+  it('finance can add an item to a new named sheet, then absorb another into it', async () => {
+    const stamp = Date.now();
+    const sheetName = `Finance Sheet ${stamp}`;
+    const firstCode = `FIN-NEW-${stamp}`;
+    const secondCode = `FIN-ABS-${stamp}`;
+
+    const created = await request(app.getHttpServer())
+      .post('/api/item-master/rows')
+      .set('Authorization', `Bearer ${financeToken}`)
+      .send({
+        itemCode: firstCode,
+        itemName: 'Finance new-sheet item',
+        destination: 'new',
+        sheetName,
+      })
+      .expect(200);
+    expect(created.body.status).toBe('published');
+
+    const afterCreate = await request(app.getHttpServer())
+      .get('/api/meta/live-sources')
+      .set('Authorization', `Bearer ${financeToken}`)
+      .expect(200);
+    const named = afterCreate.body.items.live.find(
+      (f: { originalName: string }) => f.originalName === sheetName,
+    );
+    expect(named).toBeTruthy();
+    const liveRowsBefore = named.liveRows as number;
+
+    await request(app.getHttpServer())
+      .post('/api/item-master/rows')
+      .set('Authorization', `Bearer ${financeToken}`)
+      .send({
+        itemCode: secondCode,
+        itemName: 'Finance absorbed item',
+        destination: 'existing',
+        targetBatchId: named.batchId,
+      })
+      .expect(200);
+
+    const afterAbsorb = await request(app.getHttpServer())
+      .get('/api/meta/live-sources')
+      .set('Authorization', `Bearer ${financeToken}`)
+      .expect(200);
+    const stillNamed = afterAbsorb.body.items.live.filter(
+      (f: { originalName: string }) => f.originalName === sheetName,
+    );
+    expect(stillNamed).toHaveLength(1);
+    expect(stillNamed[0].liveRows).toBe(liveRowsBefore + 1);
+
+    const found = await request(app.getHttpServer())
+      .post('/api/item-search')
+      .set('Authorization', `Bearer ${financeToken}`)
+      .send({ q: secondCode })
+      .expect(201);
+    expect(
+      found.body.hits.some((h: { itemCode: string }) => h.itemCode === secondCode),
+    ).toBe(true);
   });
 });

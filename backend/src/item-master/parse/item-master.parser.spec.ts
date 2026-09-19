@@ -279,6 +279,44 @@ describe('ItemMasterParser', () => {
     }
   });
 
+  it('stores extra date cells as YYYY-MM-DD, including serials and typed Dates', async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Sheet1');
+    sheet.addRow([
+      ...MASTER_HEADERS,
+      'Applicable From',
+      'Applicable To',
+      'W.E.F.',
+      'Created',
+    ]);
+    const row = sheet.addRow([
+      ...MASTER_ROW,
+      45306, // Excel serial for 2024-01-15
+      '45307',
+      new Date(Date.UTC(2024, 0, 17)),
+      new Date(Date.UTC(2024, 0, 18)), // typed Date, header is not "date"
+    ]);
+    row.getCell(MASTER_HEADERS.length + 1).numFmt = '0';
+    row.getCell(MASTER_HEADERS.length + 2).numFmt = '0';
+
+    const tmpPath = path.join(os.tmpdir(), `date-extra-${Date.now()}.xlsx`);
+    await workbook.xlsx.writeFile(tmpPath);
+    try {
+      const result = await parseItemMasterStream(tmpPath);
+      expect(result.acceptedRows).toBe(1);
+      expect(result.items[0].extra).toMatchObject({
+        'Applicable From': '2024-01-15',
+        'Applicable To': '2024-01-16',
+        'W.E.F.': '2024-01-17',
+        Created: '2024-01-18',
+      });
+      const blob = JSON.stringify(result.items[0].extra);
+      expect(blob).not.toContain('T00:00:00');
+    } finally {
+      fs.unlinkSync(tmpPath);
+    }
+  });
+
   it('parses the same master-code layout from an .xls workbook', async () => {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet([MASTER_HEADERS, MASTER_ROW]);

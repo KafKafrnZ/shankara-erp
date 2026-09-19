@@ -8,7 +8,12 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, QueryFailedError } from 'typeorm';
+import {
+  Repository,
+  DataSource,
+  QueryFailedError,
+  EntityManager,
+} from 'typeorm';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -26,6 +31,8 @@ import { AuditService } from '../audit/audit.service';
 import { parseItemMasterFile } from './parse/item-master.parser';
 import { ItemSearchService } from './item-search.service';
 import { ManualItemDto } from './dto/manual-item.dto';
+import type { PublishBatchDto } from './dto/publish-batch.dto';
+import { formatExtraValue } from '../common/sheet-date';
 import {
   EMPTY_MERGE_SUMMARY,
   dedupeByAlias,
@@ -617,7 +624,10 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getBatch(id: number) {
-    const batch = await this.batchRepo.findOne({ where: { id: String(id) } });
+    const batch = await this.batchRepo.findOne({
+      where: { id: String(id) },
+      relations: { sourceFile: true },
+    });
     if (!batch) throw new NotFoundException();
     return batch;
   }
@@ -637,6 +647,7 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
     userId: string,
     ip?: string,
     userAgent?: string,
+    dest?: PublishBatchDto,
   ) {
     await this.dataSource.transaction(async (manager) => {
       await manager.query(
@@ -672,10 +683,48 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
         );
       }
 
+      const sheetName = dest?.sheetName?.trim();
+      if (dest?.destination === 'new' && sheetName) {
+        await this.renameBatchSheet(manager, batch, sheetName, userId);
+      }
+
+      let absorbInto: ItemMasterBatch | null = null;
+      if (dest?.destination === 'existing') {
+        const targetId = dest.targetBatchId;
+        if (!targetId) {
+          throw new BadRequestException(
+            'Pick a live sheet to add these items to',
+          );
+        }
+        absorbInto = await manager.findOne(ItemMasterBatch, {
+          where: { id: String(targetId) },
+        });
+        if (!absorbInto || absorbInto.status !== 'published') {
+          throw new BadRequestException('That sheet is not live');
+        }
+      }
+
       batch.status = 'published';
       batch.publishedAt = new Date();
       batch.publishedBy = userId;
       await manager.save(batch);
+
+      if (absorbInto && String(absorbInto.id) !== String(batch.id)) {
+        const merged = [...(absorbInto.extraHeaders || [])];
+        const seen = new Set(merged);
+        for (const h of batch.extraHeaders || []) {
+          if (!h || seen.has(h)) continue;
+          seen.add(h);
+          merged.push(h);
+        }
+        absorbInto.extraHeaders = merged;
+        await manager.save(absorbInto);
+        await manager.query(
+          `UPDATE item_master_row SET batch_id = $1 WHERE batch_id = $2`,
+          [String(absorbInto.id), String(batch.id)],
+        );
+      }
+
       await this.auditService.log(
         {
           userId,
@@ -684,7 +733,13 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
           entityId: batchId,
           ip,
           userAgent,
-          meta: {},
+          meta: dest?.destination
+            ? {
+                destination: dest.destination,
+                sheetName: sheetName || null,
+                targetBatchId: dest.targetBatchId ?? null,
+              }
+            : {},
         },
         manager,
       );
@@ -692,6 +747,35 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
 
     this.itemSearchService.clearFacetsCache();
     return this.getBatch(batchId);
+  }
+
+  /** New-sheet name is the source file's original_name — that's what the
+   *  live-file pane already shows. Manual batches have no source file yet,
+   *  so one is created just to hold the name. */
+  private async renameBatchSheet(
+    manager: EntityManager,
+    batch: ItemMasterBatch,
+    sheetName: string,
+    userId: string,
+  ) {
+    if (batch.sourceFileId) {
+      await manager.update(
+        SourceFile,
+        { id: batch.sourceFileId },
+        { originalName: sheetName },
+      );
+      return;
+    }
+    const source = manager.create(SourceFile, {
+      sha256: batch.fileSha256,
+      storageKey: `manual/${batch.fileSha256}`,
+      originalName: sheetName,
+      byteSize: '0',
+      contentType: 'text/plain',
+      uploadedBy: userId,
+    });
+    await manager.save(source);
+    batch.sourceFileId = source.id;
   }
 
   async holdBatch(
@@ -843,7 +927,12 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
       subGroup: input.subGroup?.trim() || undefined,
       uom: input.uom?.trim() || undefined,
       alias: input.alias?.trim() || undefined,
-      extra: input.extra || {},
+      extra: Object.fromEntries(
+        Object.entries(input.extra || {}).map(([k, v]) => [
+          k,
+          formatExtraValue(k, v),
+        ]),
+      ),
     };
     const fingerprint = this.computeFingerprint(item);
 
@@ -896,7 +985,11 @@ export class ItemMasterService implements OnModuleInit, OnModuleDestroy {
       return batch.id;
     });
 
-    return this.publishBatch(Number(batchId), userId, ip, userAgent);
+    return this.publishBatch(Number(batchId), userId, ip, userAgent, {
+      destination: input.destination,
+      sheetName: input.sheetName,
+      targetBatchId: input.targetBatchId,
+    });
   }
 
   /** Soft-deletes a catalog item: inserts one more version marked deleted,

@@ -1,3 +1,5 @@
+import { formatSheetCell } from './format.ts';
+
 export interface ExportableRow {
   itemCode: string;
   itemName: string;
@@ -77,8 +79,9 @@ function tallyColumnValue(
   row: ExportableRow,
   col: (typeof TALLY_COLUMNS)[number],
 ): string {
-  if (col.key) return row[col.key] ?? '';
-  return row.extra?.[col.extraKey ?? col.label] ?? '';
+  const raw = col.key ? (row[col.key] ?? '') : (row.extra?.[col.extraKey ?? col.label] ?? '');
+  const shown = formatSheetCell(col.extraKey ?? col.label, raw);
+  return shown === '—' ? '' : shown;
 }
 
 function tsvCell(value: unknown): string {

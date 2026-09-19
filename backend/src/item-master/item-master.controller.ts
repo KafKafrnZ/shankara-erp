@@ -4,13 +4,13 @@ import {
   Get,
   Param,
   Query,
+  Body,
   UseInterceptors,
   UploadedFile,
   Req,
   Res,
   BadRequestException,
   HttpCode,
-  NotFoundException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
@@ -20,6 +20,7 @@ import { Roles } from '../auth/roles.decorator';
 import { ItemMasterService } from './item-master.service';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 import { matchUpload, UPLOAD_ERROR } from '../common/spreadsheet-kind';
+import { PublishBatchDto } from './dto/publish-batch.dto';
 
 type AuthedRequest = Request & { user: any };
 
@@ -27,7 +28,7 @@ type AuthedRequest = Request & { user: any };
 export class ItemUploadsController {
   constructor(private readonly itemMasterService: ItemMasterService) {}
 
-  @Roles('steward')
+  @Roles('steward', 'finance', 'branch')
   @Post()
   @Throttle({ default: { limit: 20, ttl: 60000 } })
   @UseInterceptors(
@@ -74,26 +75,16 @@ export class ItemBatchesController {
 
   @Roles('steward', 'finance', 'branch')
   @Get(':id')
-  async getBatch(
-    @Param('id', ParseIdPipe) id: number,
-    @Req() req: AuthedRequest,
-  ) {
-    const batch = await this.itemMasterService.getBatch(id);
-    if (
-      req.user &&
-      (req.user.role === 'finance' || req.user.role === 'branch') &&
-      batch.status !== 'published'
-    ) {
-      throw new NotFoundException();
-    }
-    return batch;
+  async getBatch(@Param('id', ParseIdPipe) id: number) {
+    return this.itemMasterService.getBatch(id);
   }
 
-  @Roles('steward')
+  @Roles('steward', 'finance', 'branch')
   @Post(':id/publish')
   @HttpCode(200)
   async publishBatch(
     @Param('id', ParseIdPipe) id: number,
+    @Body() body: PublishBatchDto = {},
     @Req() req: AuthedRequest,
   ) {
     return this.itemMasterService.publishBatch(
@@ -101,6 +92,7 @@ export class ItemBatchesController {
       req.user.id,
       req.ip,
       req.headers['user-agent'],
+      body,
     );
   }
 
@@ -119,7 +111,7 @@ export class ItemBatchesController {
     );
   }
 
-  @Roles('steward')
+  @Roles('steward', 'finance', 'branch')
   @Get(':id/skips')
   async getSkips(
     @Param('id', ParseIdPipe) id: number,
@@ -134,7 +126,7 @@ export class ItemBatchesController {
     return this.itemMasterService.getSkips(id, pageNum, size);
   }
 
-  @Roles('steward')
+  @Roles('steward', 'finance', 'branch')
   @Post(':id/retry')
   @HttpCode(200)
   async retryBatch(

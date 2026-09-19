@@ -84,4 +84,12 @@ describe('TALLY_EXPORT_COLUMNS / tallyColumnValue', () => {
     const col = TALLY_EXPORT_COLUMNS.find((c) => c.label === 'MRP Value')!;
     expect(tallyColumnValue(row, col)).toBe('');
   });
+
+  it('turns leftover Excel serials on date columns into real dates', () => {
+    const row = { extra: { 'Applicable From': '45306' } } as ItemMasterRow;
+    const col = TALLY_EXPORT_COLUMNS.find((c) => c.label === 'Applicable From')!;
+    const value = tallyColumnValue(row, col);
+    expect(value).toBeInstanceOf(Date);
+    expect((value as Date).toISOString().slice(0, 10)).toBe('2024-01-15');
+  });
 });
