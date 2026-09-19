@@ -12,8 +12,9 @@ The item catalog for Shankara Buildpro — SKU list (codes, brands, HSN,
 groups) that Tally exports produce, searchable in a browser instead of
 flipping through Excel.
 
-Anyone with a login can search it. Only a **steward** can add, edit, or
-upload items.
+Anyone with a login can search it, add an item, or upload an Excel sheet.
+Only a **steward** (office admin) can edit or delete an item that is
+already live, take a sheet off search, or manage other people's logins.
 
 Tally is still where accounting lives. This system does not post anything
 back to Tally.
@@ -46,9 +47,9 @@ has not set up.
 
 | Role | Can do |
 |---|---|
-| **Steward** | Search, upload new item files, add/edit/remove items, manage other people's logins |
-| **Finance** | Search and view only |
-| **Branch** | Search and view only |
+| **Steward** | Search, upload, add/edit/remove items, take a sheet off search, manage other people's logins |
+| **Finance** | Search, add items, upload a sheet (then name a new live sheet or add into an existing one) |
+| **Branch** | Same as Finance |
 
 If you need steward access, ask someone who already has it. On their
 side it is a short form under **People**.
@@ -78,8 +79,9 @@ normal.
   in. Someone else's mistake lands under your name.
 - **Log out on shared computers.** Closing the tab is not the same as
   logging out.
-- **Stewards: only upload a file you have checked.** “Merge into catalog”
-  makes it visible to everyone immediately.
+- **Only upload a file you have checked.** After it is read, **Add items**
+  asks whether these go into a **new** live sheet (you give it a name) or
+  an **existing** one. That is when everyone else can search them.
 - **Something look wrong?** A search returning nothing you expect, an
   error, a page that will not load — screenshot it and send it to IT.
   Do not try to fix the server yourself.

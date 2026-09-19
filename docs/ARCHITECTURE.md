@@ -2,7 +2,8 @@
 
 **What this is right now**, in detail. If something here and the code
 disagree, the code wins — file an update to this doc, don't trust this over
-a fresh read of the source.
+a fresh read of the source. Today's catalog-entry work is also summarized
+in [`HANDOFF-2026-09-19.md`](HANDOFF-2026-09-19.md).
 
 This document is the system as it exists today: an item-catalog search,
 filter, and CRUD tool. Older per-session briefs and the retired
@@ -26,14 +27,18 @@ this system doesn't write anything back to Tally, and there's no accounting
 ledger, no vouchers, no GST filing. It's a catalog search-and-maintain tool,
 not a general ERP.
 
-Three roles:
-- **steward** — uploads files, publishes/holds batches, adds/edits/deletes
-  individual catalog rows, manages other users. The "office admin."
-- **finance** / **branch** — search and view the published catalog only.
-  Read-only. (`branch` and `companyId`/`branchId` scoping exist on the user
-  model as a carry-over from the old voucher system's company-scoped
-  access — the catalog itself is *not* company-scoped, so these fields
-  currently have no effect on what a finance/branch user can search.)
+Three roles (see [`HANDOFF-2026-09-19.md`](HANDOFF-2026-09-19.md) for
+today's change):
+- **steward** — office admin. Everything finance/branch can do, plus
+  edit/delete a live item, take a published sheet off search (hold),
+  and manage other users.
+- **finance** / **branch** — search the published catalog, add items
+  (typed or Excel), and publish them into a **new** named live sheet or
+  an **existing** one. Not read-only. (`branch` and `companyId`/`branchId`
+  scoping exist on the user model as a carry-over from the old voucher
+  system's company-scoped access — the catalog itself is *not*
+  company-scoped, so these fields currently have no effect on what they
+  can search.)
 
 ---
 
@@ -146,7 +151,7 @@ purposes depends on which layout produced the row — see
 
 ## 4. Catalog upload → publish pipeline
 
-1. **Upload** (`POST /api/item-uploads`, steward only) — rejected before
+1. **Upload** (`POST /api/item-uploads`, any signed-in role) — rejected before
    anything is stored or queued unless the filename extension and the
    file's bytes agree (`backend/src/common/spreadsheet-kind.ts`):
    `.xlsx` must be a ZIP local file header, `.xls` must be an OLE
@@ -167,13 +172,20 @@ purposes depends on which layout produced the row — see
    (`item-master.parser.ts`'s `extractExtra`). Unparseable rows go to
    `item_master_skip` with a reason code, not silently dropped. On success
    the batch moves to `held`.
-3. **Publish** (`POST /api/item-batches/:id/publish`, steward only) — takes
-   a Postgres advisory lock (`pg_advisory_xact_lock(hashtext('item-master-publish'))`)
-   so concurrent publishes serialize instead of racing, closes out the
-   previous live row for any `item_code` this batch shares with the current
-   live set, and flips the batch to `published`. This is also the exact
-   mechanism manual add/edit/delete reuses (§6) — a manual change *is* a
-   1-row batch that gets published the same way.
+3. **Publish** (`POST /api/item-batches/:id/publish`, any signed-in role) —
+   takes a Postgres advisory lock
+   (`pg_advisory_xact_lock(hashtext('item-master-publish'))`) so concurrent
+   publishes serialize instead of racing, closes out the previous live row
+   for any `item_code` this batch shares with the current live set, and
+   flips the batch to `published`. Optional JSON body:
+   `{ destination: 'new', sheetName }` renames the source file (or creates
+   a dummy `source_file` for a manual batch) so the live-file pane shows
+   that name; `{ destination: 'existing', targetBatchId }` merges
+   `extra_headers` onto the target published batch and moves this batch's
+   rows onto it, so the pane still shows one live file. Empty body = new
+   sheet, keep the uploaded filename. This is also the exact mechanism
+   manual add/edit/delete reuses (§6) — a manual change *is* a 1-row
+   batch that gets published the same way.
 4. **Hold** (`POST /api/item-batches/:id/hold`) — the reverse: take a
    published batch off search, restoring whatever was live before it for
    any item codes it was the current version of.
@@ -219,21 +231,25 @@ the whole read path. `visibleRows()` is the one filter every query shares:
 
 ## 6. Manual CRUD (add / edit / delete one item)
 
-Steward-only, reusing the exact same batch→publish→audit pipeline uploads
-use, rather than a parallel "just UPDATE the row" path:
+Reuses the exact same batch→publish→audit pipeline uploads use, rather
+than a parallel "just UPDATE the row" path. **Add** is open to every
+signed-in role (the UI asks new-sheet vs existing-sheet first). **Edit**
+is steward-gated in the drawer; **delete** is steward-only on the API.
 
 - **Add or edit** — `POST /api/item-master/rows` (`ManualItemDto`), keyed
   by `itemCode`. Creates a 1-row batch (`is_manual: true`,
   `source_file_id: null`, status `held`), inserts the row, then
-  immediately calls the same `publishBatch()` uploads use — no separate
-  review step, since there's nothing to review on a single typed-in row.
+  immediately calls the same `publishBatch()` uploads use. Create from
+  the UI always sends `destination` + `sheetName` or `targetBatchId`.
+  Edit (steward, existing item) still publishes as a "Manual edit"
+  batch if destination is omitted.
   Audited as `item_manual_create` or `item_manual_update` depending on
   whether the item code already existed.
 - **Delete** — `DELETE /api/item-master/rows/:itemCode`. Same mechanism,
   inserts one more version with `is_deleted: true`. 404s if the item isn't
   currently live. Audited as `item_manual_delete`.
-- The frontend's `+ New item` button and the drawer's `Edit`/`Delete`
-  buttons (steward-only) drive this. Deleting shows a confirm banner first
+- The frontend's `+ New item` button (every role) and the drawer's
+  `Edit`/`Delete` buttons (steward-only) drive this. Deleting shows a confirm banner first
   (`ItemDrawer.tsx`); a deleted item's drawer offers "Add it back," which
   reopens the edit form pre-filled from its last known values.
 - The form (`ItemEditForm.tsx`) fetches `GET /api/item-search/fields` on
