@@ -11,17 +11,27 @@ export function isDateColumnLabel(label: string): boolean {
   return DATE_COLUMN_RE.test(label);
 }
 
-/** YYYY-MM-DD from a JS Date without the IST-midnight → previous-day shift
- *  that toISOString() produces on office machines. */
+const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
+
+function ymdUtc(d: Date): string {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** YYYY-MM-DD from a JS Date. Excel date-only cells are UTC midnight.
+ *  Anything else is a civil date in Asia/Kolkata — using the machine's
+ *  local timezone failed CI (UTC runners) and would still slip a day
+ *  via toISOString() on the office IST boxes. */
 export function calendarDateFromJs(d: Date): string {
-  const useUtc =
+  const utcMidnight =
     d.getUTCHours() === 0 &&
     d.getUTCMinutes() === 0 &&
-    d.getUTCSeconds() === 0;
-  const y = useUtc ? d.getUTCFullYear() : d.getFullYear();
-  const m = (useUtc ? d.getUTCMonth() : d.getMonth()) + 1;
-  const day = useUtc ? d.getUTCDate() : d.getDate();
-  return `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    d.getUTCSeconds() === 0 &&
+    d.getUTCMilliseconds() === 0;
+  if (utcMidnight) return ymdUtc(d);
+  return ymdUtc(new Date(d.getTime() + IST_OFFSET_MS));
 }
 
 export function excelSerialToIsoDate(serial: number): string | null {
@@ -33,7 +43,11 @@ export function excelSerialToIsoDate(serial: number): string | null {
 
 function isoDateOnly(value: string): string | null {
   const t = value.trim();
-  if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  if (/^\d{4}-\d{2}-\d{2}T/.test(t)) {
+    const d = new Date(t);
+    if (!Number.isNaN(d.getTime())) return calendarDateFromJs(d);
+  }
   return null;
 }
 

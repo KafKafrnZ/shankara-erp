@@ -19,10 +19,14 @@ describe('sheet-date', () => {
   });
 
   it('does not shift an IST-midnight Date back a day', () => {
-    // 15 Jan 2024 00:00 IST = 14 Jan 2024 18:30 UTC
+    // 15 Jan 2024 00:00 IST = 14 Jan 2024 18:30 UTC — must not depend
+    // on the runner's local timezone (CI is UTC).
     const istMidnight = new Date('2024-01-14T18:30:00.000Z');
     expect(calendarDateFromJs(istMidnight)).toBe('2024-01-15');
     expect(calendarDateFromJs(new Date(Date.UTC(2024, 0, 15)))).toBe(
+      '2024-01-15',
+    );
+    expect(formatExtraValue('Created', '2024-01-14T18:30:00.000Z')).toBe(
       '2024-01-15',
     );
   });
